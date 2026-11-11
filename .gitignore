@@ -1,0 +1,32 @@
+# 虚拟环境（767MB，绝不能提交）
+.venv/
+venv/
+env/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# 向量库与运行时产物（可重建，且是二进制大文件）
+chroma_db/
+*.sqlite3
+md5.text
+
+# 备份与日志
+*.bak
+*.bak_*
+logs/*.log
+
+# 本地密钥（如果你以后加了 .env）
+.env
+.env.*
+
+# 系统文件
+Thumbs.db
+.DS_Store
