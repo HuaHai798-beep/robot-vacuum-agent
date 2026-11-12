@@ -1,16 +1,21 @@
 from langchain_core.tools import tool
 from rag.rag_service import RagSummarizeService
-import random
+
+from datetime import datetime
 from utils.config_handler import agent_conf
 from utils.path_tool import get_abs_path
 import os
 from utils.logger_handler import logger
+import json, urllib.parse, urllib.request
 
 rag = RagSummarizeService()
+# 当前用户：环境变量 > config/agent.yml > 兜底默认值
+_mock_user = agent_conf.get("mock_user") or {}
+USER_ID   = os.getenv("AGENT_USER_ID")   or _mock_user.get("id")   or "1001"
+USER_CITY = os.getenv("AGENT_USER_CITY") or _mock_user.get("city") or "杭州"
 
-user_ids = ["1001", "1002", "1003", "1004", "1005", "1006", "1007", "1008", "1009", "1010",]
-month_arr = ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06",
-             "2024-07", "2024-08", "2024-09", "2024-10", "2024-11", "2024-12", ]
+
+
 
 external_data = {}
 
@@ -18,21 +23,37 @@ external_data = {}
 def rag_summarize(query: str) -> str:
     return rag.rag_summarize(query)
 
-@tool(description="获取指定城市的天气，以消息字符串的形式返回")
+
+
+@tool(description="获取指定城市的实时天气，返回温度、天气现象和湿度")
 def get_weather(city: str) -> str:
-    return f"城市{city}天气为晴天，气温26摄氏度，空气湿度50%，南风1级，AQI21，最近6小时降雨概率极低"
+    url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1"
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:   # 必有超时
+            data = json.loads(r.read().decode("utf-8"))
+        cur = data["current_condition"][0]
+        return json.dumps({
+            "city": city,
+            "text": cur["weatherDesc"][0]["value"],
+            "temp_c": cur["temp_C"],
+            "humidity": f'{cur["humidity"]}%',
+        }, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"[get_weather]失败：{e}")
+        return ""            # 关键：失败返回空串，不要把异常抛给模型
+
 
 @tool(description="获取用户所在城市的名称，以纯字符串形式返回")
 def get_user_location() -> str:
-    return random.choice(["深圳", "合肥", "杭州"])
+    return USER_CITY
 
 @tool(description="获取用户的ID，以纯字符串形式返回")
 def get_user_id() -> str:
-    return random.choice(user_ids)
+    return USER_ID
 
 @tool(description="获取当前月份，以纯字符串形式返回")
 def get_current_month() -> str:
-    return random.choice(month_arr)
+    return datetime.now().strftime("%Y-%m")
 
 
 def generate_external_data():

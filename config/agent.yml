@@ -1,1 +1,5 @@
 external_data_path: data/external/records.csv
+
+mock_user:
+  id: "1001"
+  city: "杭州"
