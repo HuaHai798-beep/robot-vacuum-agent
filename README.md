@@ -1,5 +1,7 @@
 # 扫地机器人智能客服 Agent
 
+[![version](https://img.shields.io/github/v/tag/HuaHai798-beep/robot-vacuum-agent?label=version)](https://github.com/HuaHai798-beep/robot-vacuum-agent/tags)
+
 基于 **LangChain 1.x + LangGraph + Chroma + 通义千问** 的 RAG + Agent 客服项目，覆盖「知识库检索 → 工具调用 → 多步推理 → 评测」的完整链路。
 
 > 本项目为个人学习/作品集项目，知识库与外部记录均为演示数据，不代表任何品牌官方说法。
