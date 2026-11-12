@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-11-11T22:18:48",
+  "metrics": {
+    "n": 25,
+    "pass_rate": 72.0,
+    "by_category": {
+      "retrieval": {
+        "n": 15,
+        "pass_rate": 66.7
+      },
+      "tool": {
+        "n": 4,
+        "pass_rate": 75.0
+      },
+      "refuse": {
+        "n": 3,
+        "pass_rate": 100.0
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 50.0
+      },
+      "multi_turn": {
+        "n": 1,
+        "pass_rate": 100.0
+      }
+    },
+    "tool_acc": 80.0,
+    "hit_at_3": 87.5,
+    "avg_latency": 10.37,
+    "p95_latency": 19.72
+  },
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261111_2218.jsonl"
+}
