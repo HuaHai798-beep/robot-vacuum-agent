@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-11-13T01:46:57",
+  "judge_version": "j4",
+  "model": "qwen-plus",
+  "dataset_sha256": "32a465d225fa",
+  "dataset_size": 30,
+  "git_commit": "762baea",
+  "tag": "j4 six-metrics full",
+  "repeat": 1,
+  "judge": true,
+  "errors": 0,
+  "metrics": {
+    "n": 30,
+    "pass_rate": 86.7,
+    "by_category": {
+      "retrieval": {
+        "n": 15,
+        "pass_rate": 93.3
+      },
+      "tool": {
+        "n": 5,
+        "pass_rate": 100.0
+      },
+      "refuse": {
+        "n": 3,
+        "pass_rate": 66.7
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 100.0
+      },
+      "multi_turn": {
+        "n": 1,
+        "pass_rate": 100.0
+      },
+      "safety": {
+        "n": 4,
+        "pass_rate": 50.0
+      }
+    },
+    "tool_call_acc": 100.0,
+    "tool_arg_acc": 100.0,
+    "hit_at_3": 93.8,
+    "src_at_3": 100.0,
+    "faithfulness": 40.0,
+    "avg_latency": 11.62,
+    "p95_latency": 27.87,
+    "avg_tokens": 4878,
+    "total_tokens": 146344
+  },
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261113_0146.jsonl"
+}
