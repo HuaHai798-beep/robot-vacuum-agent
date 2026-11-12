@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-11-13T01:15:08",
+  "model": "qwen-plus",
+  "dataset_sha256": "e7d56b964f63",
+  "dataset_size": 26,
+  "git_commit": "f7579ce",
+  "tag": "qwen-plus + P0 + eval-hardening",
+  "errors": 0,
+  "metrics": {
+    "n": 26,
+    "pass_rate": 96.2,
+    "by_category": {
+      "retrieval": {
+        "n": 15,
+        "pass_rate": 100.0
+      },
+      "tool": {
+        "n": 5,
+        "pass_rate": 100.0
+      },
+      "refuse": {
+        "n": 3,
+        "pass_rate": 66.7
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 100.0
+      },
+      "multi_turn": {
+        "n": 1,
+        "pass_rate": 100.0
+      }
+    },
+    "tool_acc": 100.0,
+    "hit_at_3": 93.8,
+    "avg_latency": 12.7,
+    "p95_latency": 23.26
+  },
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261113_0115.jsonl"
+}
