@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
-"""本地混合重排：BM25（字符 bigram）+ 向量召回，用 RRF 融合。
+"""检索重排：支持「官方语义重排」与「本地 BM25」两种实现。
 
-为什么需要它：
-    评测发现 chunk_recall@5 = 100% 但 chunk_recall@3 = 87.5%
-    —— 正确的块**总是能召回到前 5**，只是排不进前 3。这是排序问题，不是召回问题。
+背景（v1.7 评测结论）：
+    块级指标显示 chunk_recall@5 = 100%、chunk_recall@3 = 87.5%
+    —— 正确块总在前 5，只是排不进前 3，属于排序问题。
 
-为什么不用官方 gte-rerank：
-    账号未开通（403 AccessDenied）。本模块零依赖、可离线跑；
-    后续开通后只需把 `rerank_search` 换成官方接口，接口签名保持一致。
+两种实现：
+    1) api  ：DashScope qwen3.7-text-rerank（cross-encoder，语义重排）—— 已验证有效
+    2) bm25 ：本地 BM25(jieba) + RRF —— **已证伪**：任何 BM25 权重都会降低 chunk_MRR，
+               保留代码仅用于对照实验，生产不启用。
 
-中文分词：没有 jieba，用「字符 bigram」当 token（对中文短文本效果好且零依赖）。
+切换：config/chroma.yml
+    rerank_enabled: true
+    rerank_method: api        # api | bm25
+    rerank_model: qwen3.7-text-rerank
+    rerank_candidates: 10
 """
 import math
 import re
@@ -17,29 +22,61 @@ from collections import Counter
 
 from langchain_core.runnables import RunnableLambda
 
+from utils.config_handler import chroma_conf
+
 _RRF_K = 60
 
 
+# ============================ 一、官方语义重排 ============================
+def api_rerank_search(vector_store, query: str, topk: int = 3, candidates: int = 10):
+    """向量召回 candidates → qwen3.7-text-rerank 重排 → 取 topk"""
+    import dashscope
+
+    docs = vector_store.similarity_search(query, k=candidates)
+    if not docs:
+        return []
+    if len(docs) <= topk:
+        return docs
+
+    model = chroma_conf.get("rerank_model", "qwen3.7-text-rerank")
+    try:
+        resp = dashscope.TextReRank.call(
+            model=model,
+            query=query,
+            documents=[d.page_content for d in docs],
+            top_n=min(topk, len(docs)),
+        )
+    except Exception:
+        return docs[:topk]
+
+    if getattr(resp, "status_code", 500) != 200 or not getattr(resp, "output", None):
+        return docs[:topk]
+
+    results = sorted(resp.output.results, key=lambda x: x.relevance_score, reverse=True)
+    out = []
+    for item in results[:topk]:
+        idx = int(item.index)
+        if 0 <= idx < len(docs):
+            out.append(docs[idx])
+    return out or docs[:topk]
+
+
+# ============================ 二、本地 BM25（对照实验，已证伪） ============================
 def tokenize(text: str) -> list[str]:
-    """中文用字符 bigram，英文/数字保留为词。"""
+    """优先 jieba 分词，缺失时退回字符 bigram。"""
     text = (text or "").lower()
-    tokens: list[str] = []
-    # 英文/数字词
-    for w in re.findall(r"[a-z0-9]+", text):
-        tokens.append(w)
-    # 中文字符 bigram
-    cjk = re.findall(r"[\u4e00-\u9fff]+", text)
-    for seg in cjk:
-        if len(seg) == 1:
-            tokens.append(seg)
-        else:
-            tokens.extend(seg[i:i + 2] for i in range(len(seg) - 1))
-    return tokens
+    try:
+        import jieba
+
+        return [w for w in jieba.lcut(text) if w.strip()]
+    except Exception:
+        tokens = re.findall(r"[a-z0-9]+", text)
+        for seg in re.findall(r"[\u4e00-\u9fff]+", text):
+            tokens.extend([seg] if len(seg) == 1 else [seg[i:i + 2] for i in range(len(seg) - 1)])
+        return tokens
 
 
 class BM25:
-    """标准 BM25，用全量知识库统计 idf。"""
-
     def __init__(self, docs_tokens: list[list[str]], k1: float = 1.5, b: float = 0.75):
         self.k1, self.b = k1, b
         self.N = len(docs_tokens)
@@ -65,8 +102,6 @@ class BM25:
 
 
 class _IndexCache:
-    """按集合内容缓存 BM25 索引（88 块，构建一次几十毫秒）。"""
-
     def __init__(self):
         self.key = None
         self.index = None
@@ -84,8 +119,8 @@ class _IndexCache:
 _CACHE = _IndexCache()
 
 
-def rerank_search(vector_store, query: str, topk: int = 3, candidates: int = 10):
-    """向量召回 candidates 条 → BM25 对候选打分 → RRF 融合 → 取 topk。"""
+def bm25_rerank_search(vector_store, query: str, topk: int = 3, candidates: int = 10, alpha: float = 0.0):
+    """RRF 融合（alpha 为 BM25 权重；评测结论 alpha=0 最优，即纯向量）"""
     vec_docs = vector_store.similarity_search(query, k=candidates)
     if not vec_docs:
         return []
@@ -94,18 +129,25 @@ def rerank_search(vector_store, query: str, topk: int = 3, candidates: int = 10)
     qtokens = tokenize(query)
     bm25_scores = [idx.score(qtokens, i) if i < len(idx.tf) else 0.0 for i in range(len(vec_docs))]
 
-    # RRF：向量顺序 + BM25 顺序融合
     rrf = {}
-    for rank, _ in enumerate(vec_docs):
-        rrf[rank] = rrf.get(rank, 0.0) + 1.0 / (_RRF_K + rank + 1)
+    for rank in range(len(vec_docs)):
+        rrf[rank] = 1.0 / (_RRF_K + rank + 1)
     bm_order = sorted(range(len(vec_docs)), key=lambda i: bm25_scores[i], reverse=True)
     for rank, pos in enumerate(bm_order):
-        rrf[pos] = rrf.get(pos, 0.0) + 1.0 / (_RRF_K + rank + 1)
+        rrf[pos] = rrf.get(pos, 0.0) + alpha * 1.0 / (_RRF_K + rank + 1)
 
     fused = sorted(rrf.items(), key=lambda kv: kv[1], reverse=True)
     return [vec_docs[i] for i, _ in fused[:topk]]
 
 
+# ============================ 三、统一入口 ============================
+def rerank_search(vector_store, query: str, topk: int = 3, candidates: int = 10):
+    method = (chroma_conf.get("rerank_method") or "api").lower()
+    if method == "bm25":
+        return bm25_rerank_search(vector_store, query, topk=topk, candidates=candidates)
+    return api_rerank_search(vector_store, query, topk=topk, candidates=candidates)
+
+
 def make_rerank_retriever(vector_store, topk: int = 3, candidates: int = 10):
-    """返回一个 LangChain Runnable，可直接用于 chain 与 retriever.invoke(query)。"""
+    """返回 LangChain Runnable，可直接 invoke / 参与 chain。"""
     return RunnableLambda(lambda q: rerank_search(vector_store, q, topk=topk, candidates=candidates))

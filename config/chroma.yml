@@ -1,6 +1,6 @@
 collection_name: agent
 persist_directory: rag/chroma_db
-k: 5
+k: 3
 data_path: data
 md5_hex_store: md5.text
 allow_knowledge_file_type: ["txt", "pdf"]
@@ -10,5 +10,7 @@ chunk_overlap: 20
 separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
 
 # 检索重排（本地 BM25+RRF；开通 gte-rerank 后可替换）
-rerank_enabled: false
+rerank_enabled: true
 rerank_candidates: 10
+rerank_method: api
+rerank_model: qwen3.7-text-rerank
