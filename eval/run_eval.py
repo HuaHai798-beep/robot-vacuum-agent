@@ -240,16 +240,18 @@ def retrieval_query(case: dict) -> str:
     return case["question"]
 
 
-def retrieval_metrics(retriever, case: dict, topk: int = 5) -> dict:
+def retrieval_metrics(vector_store, case: dict, topk: int = 5, rerank: bool = False) -> dict:
     """只对"答案来自知识库 txt"的用例计算检索指标"""
     src_file = (case.get("gold_source") or "")
     if not src_file.endswith(".txt"):
         return {"hit3": None, "src1": None, "src3": None, "src5": None, "mrr5": None}
 
     query = retrieval_query(case)
-    vs = getattr(retriever, "vectorstore", None)
-    # 注意：retriever 的 k 来自 chroma.yml（=3），做 @5 指标必须直接用向量库取 topk
-    docs = (vs.similarity_search(query, k=topk) if vs is not None else retriever.invoke(query)[:topk])
+    if rerank:
+        from rag.reranker import rerank_search
+        docs = rerank_search(vector_store, query, topk=topk, candidates=10)
+    else:
+        docs = vector_store.similarity_search(query, k=topk)
     out = {"hit3": None, "src1": False, "src3": False, "src5": False, "mrr5": 0.0,
            "chunk_hit3": None, "chunk_hit5": None, "chunk_rank": None, "chunk_mrr5": None}
 
@@ -448,6 +450,8 @@ def main():
     ap.add_argument("--tag", default="")
     ap.add_argument("--delay", type=float, default=0.3)
     ap.add_argument("--skip-preflight", action="store_true")
+    ap.add_argument("--no-rerank", action="store_true", help="强制关闭本地重排")
+    ap.add_argument("--rerank", action="store_true", help="强制开启本地重排（默认跟随 chroma.yml）")
     args = ap.parse_args()
 
     baseline_path = Path(args.baseline)
@@ -473,8 +477,11 @@ def main():
         cases = cases[: args.limit]
     print(f"本次用例: {len(cases)} | 重复: {args.repeat} | judge: {'开' if args.judge else '关'}")
 
+    from utils.config_handler import chroma_conf
     from rag.vector_store import VectorStoreService
-    retriever = VectorStoreService().get_retriever()
+    _vst = VectorStoreService()
+    vector_store = _vst.vector_store
+    retriever = _vst.get_retriever()
 
     agent = None
     if not args.no_llm:
@@ -487,7 +494,8 @@ def main():
                "note": case.get("note", ""), "expect_tools": case.get("expect_tools") or [],
                "expect_args": case.get("expect_args") or {}}
         try:
-            rec.update(retrieval_metrics(retriever, case))
+            use_rerank = args.rerank or (not args.no_rerank and bool(chroma_conf.get("rerank_enabled")))
+            rec.update(retrieval_metrics(vector_store, case, rerank=use_rerank))
             if not args.no_llm:
                 runs = [run_with_retry(run_agent, agent, case) for _ in range(max(1, args.repeat))]
                 rec.update(runs[0])

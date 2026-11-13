@@ -25,7 +25,12 @@ class VectorStoreService:
         )
 
     def get_retriever(self):
-        return self.vector_store.as_retriever(search_kwargs={"k": chroma_conf["k"]})
+        k = chroma_conf["k"]
+        if chroma_conf.get("rerank_enabled"):
+            from rag.reranker import make_rerank_retriever
+            return make_rerank_retriever(self.vector_store, topk=k,
+                                         candidates=int(chroma_conf.get("rerank_candidates", 10)))
+        return self.vector_store.as_retriever(search_kwargs={"k": k})
 
     def load_document(self):
         """

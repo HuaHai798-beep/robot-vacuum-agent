@@ -1,6 +1,6 @@
 collection_name: agent
 persist_directory: rag/chroma_db
-k: 3
+k: 5
 data_path: data
 md5_hex_store: md5.text
 allow_knowledge_file_type: ["txt", "pdf"]
@@ -8,3 +8,7 @@ allow_knowledge_file_type: ["txt", "pdf"]
 chunk_size: 200
 chunk_overlap: 20
 separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
+
+# 检索重排（本地 BM25+RRF；开通 gte-rerank 后可替换）
+rerank_enabled: false
+rerank_candidates: 10
