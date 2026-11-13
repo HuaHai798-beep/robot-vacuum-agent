@@ -13,6 +13,7 @@ rag = RagSummarizeService()
 _mock_user = agent_conf.get("mock_user") or {}
 USER_ID   = os.getenv("AGENT_USER_ID")   or _mock_user.get("id")   or "1001"
 USER_CITY = os.getenv("AGENT_USER_CITY") or _mock_user.get("city") or "杭州"
+CURRENT_USER_ID = USER_ID   # 当前登录用户，用于越权校验
 
 
 
@@ -89,8 +90,13 @@ def generate_external_data():
 def fetch_external_data(user_id: str, month: str) -> str:
     generate_external_data()
 
+    # 越权校验：只允许查询当前登录用户
+    if str(user_id).strip() != str(CURRENT_USER_ID):
+        logger.warning(f"[fetch_external_data]越权拦截：请求 {user_id}，当前用户 {CURRENT_USER_ID}")
+        return "无权查询其他用户的使用记录，我只能查看当前登录用户的数据。"
+
     try:
-        return external_data[user_id][month]
+        return json.dumps(external_data[user_id][month], ensure_ascii=False)
     except KeyError:
         logger.warning(f"[fetch_external_data]未能检索到用户：{user_id}在{month}的使用记录数据")
         return ""

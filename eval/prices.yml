@@ -1,0 +1,11 @@
+# 模型价格表（元 / 1K tokens）
+# ⚠️ 以阿里云百炼控制台当期价格为准，每月核对一次；脚本只做计算，不保证价格准确
+qwen-plus:
+  input: 0.0008
+  output: 0.002
+qwen-turbo:
+  input: 0.0003
+  output: 0.0006
+qwen-max:
+  input: 0.0024
+  output: 0.0096

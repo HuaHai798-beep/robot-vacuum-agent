@@ -15,7 +15,7 @@ class BaseModelFactory(ABC):
 
 class ChatModelFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
-        return ChatTongyi(model=rag_conf["chat_model_name"])
+        return ChatTongyi(model=rag_conf["chat_model_name"], max_tokens=2000)  # 限制输出预算，避免思考过长导致答案截断
 
 
 class EmbeddingsFactory(BaseModelFactory):
