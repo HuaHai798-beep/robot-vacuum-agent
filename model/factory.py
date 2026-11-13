@@ -54,5 +54,16 @@ class EmbeddingsFactory(BaseModelFactory):
         return DashScopeEmbeddings(model=rag_conf["embedding_model_name"])
 
 
-chat_model = ChatModelFactory().generator()
+# 向量模型：导入时即构建（只依赖 DASHSCOPE_API_KEY）
 embed_model = EmbeddingsFactory().generator()
+
+
+def __getattr__(name: str):
+    """延迟构建 chat_model：只有真正用到对话模型时才要求对应的 API key。
+    这样 `--no-llm` 的检索评测、或只用向量库的脚本，不需要配置对话模型的 key。
+    """
+    if name == "chat_model":
+        global chat_model
+        chat_model = ChatModelFactory().generator()
+        return chat_model
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

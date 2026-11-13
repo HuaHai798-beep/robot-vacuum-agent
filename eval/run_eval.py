@@ -229,14 +229,29 @@ def run_with_retry(fn, *a, retries: int = 3, delays=(5, 15, 30), **kw):
     raise last
 
 
+def retrieval_query(case: dict) -> str:
+    """检索用查询：多轮用例要把历史用户话合并（否则"那它呢"这种查询没法检索）"""
+    msgs = case.get("messages")
+    if msgs:
+        parts = [m.get("content", "") for m in msgs if m.get("role") == "user"]
+        q = " ".join(parts).strip()
+        if q:
+            return q
+    return case["question"]
+
+
 def retrieval_metrics(retriever, case: dict, topk: int = 5) -> dict:
     """只对"答案来自知识库 txt"的用例计算检索指标"""
     src_file = (case.get("gold_source") or "")
     if not src_file.endswith(".txt"):
         return {"hit3": None, "src1": None, "src3": None, "src5": None, "mrr5": None}
 
-    docs = retriever.invoke(case["question"])[:topk]
-    out = {"hit3": None, "src1": False, "src3": False, "src5": False, "mrr5": 0.0}
+    query = retrieval_query(case)
+    vs = getattr(retriever, "vectorstore", None)
+    # 注意：retriever 的 k 来自 chroma.yml（=3），做 @5 指标必须直接用向量库取 topk
+    docs = (vs.similarity_search(query, k=topk) if vs is not None else retriever.invoke(query)[:topk])
+    out = {"hit3": None, "src1": False, "src3": False, "src5": False, "mrr5": 0.0,
+           "chunk_hit3": None, "chunk_hit5": None, "chunk_rank": None, "chunk_mrr5": None}
 
     must = case.get("must_contain") or []
     if must:
@@ -252,6 +267,19 @@ def retrieval_metrics(retriever, case: dict, topk: int = 5) -> dict:
     out["src3"] = 1 <= rank <= 3
     out["src5"] = rank >= 1
     out["mrr5"] = round(1.0 / rank, 4) if rank else 0.0
+
+    # 块级：gold_chunk（关键句）是否被封装的块命中
+    gold_chunk = case.get("gold_chunk")
+    if gold_chunk:
+        c_rank = 0
+        for i, d in enumerate(docs, 1):
+            if norm(gold_chunk) in norm(d.page_content):
+                c_rank = i
+                break
+        out["chunk_rank"] = c_rank or None
+        out["chunk_hit3"] = 1 <= c_rank <= 3
+        out["chunk_hit5"] = c_rank >= 1
+        out["chunk_mrr5"] = round(1.0 / c_rank, 4) if c_rank else 0.0
     return out
 
 
@@ -310,6 +338,7 @@ def summarize(results: list, price: dict) -> dict:
     args_cases = [r for r in results if r.get("expect_args")]
     hit_cases = [r for r in results if r.get("hit3") is not None]
     src_cases = [r for r in results if r.get("mrr5") is not None]
+    chunk_cases = [r for r in results if r.get("chunk_mrr5") is not None]
     faith = [r for r in results if r.get("faithful") is not None]
     rel = [r for r in results if r.get("relevance")]
     toks = [r.get("tokens", 0) for r in results if r.get("tokens")]
@@ -334,6 +363,9 @@ def summarize(results: list, price: dict) -> dict:
         "src_at_3": round(sum(1 for r in src_cases if r["src3"]) / len(src_cases) * 100, 1) if src_cases else None,
         "src_at_5": round(sum(1 for r in src_cases if r["src5"]) / len(src_cases) * 100, 1) if src_cases else None,
         "mrr5": round(statistics.mean([r["mrr5"] for r in src_cases]), 3) if src_cases else None,
+        "chunk_recall3": round(sum(1 for r in chunk_cases if r["chunk_hit3"]) / len(chunk_cases) * 100, 1) if chunk_cases else None,
+        "chunk_recall5": round(sum(1 for r in chunk_cases if r.get("chunk_hit5")) / len(chunk_cases) * 100, 1) if chunk_cases else None,
+        "chunk_mrr5": round(statistics.mean([r["chunk_mrr5"] for r in chunk_cases]), 3) if chunk_cases else None,
         "faithfulness": round(sum(1 for r in faith if r["faithful"]) / len(faith) * 100, 1) if faith else None,
         "relevance_avg": round(statistics.mean([r["relevance"] for r in rel]), 2) if rel else None,
         "relevance_pass": round(sum(1 for r in rel if r["relevance"] >= 3.5) / len(rel) * 100, 1) if rel else None,
@@ -365,7 +397,10 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
         ("来源 src@1", "src_at_1", "{:.1f}%"),
         ("来源 src@3", "src_at_3", "{:.1f}%"),
         ("来源 src@5", "src_at_5", "{:.1f}%"),
-        ("MRR@5", "mrr5", "{:.3f}"),
+        ("MRR@5(文件级)", "mrr5", "{:.3f}"),
+        ("块级 chunk_recall@3", "chunk_recall3", "{:.1f}%"),
+        ("块级 chunk_recall@5", "chunk_recall5", "{:.1f}%"),
+        ("块级 chunk_MRR@5", "chunk_mrr5", "{:.3f}"),
         ("工具调用准确率", "tool_call_acc", "{:.1f}%"),
         ("工具参数准确率", "tool_arg_acc", "{:.1f}%"),
         ("P50/P95延迟", "p95_latency", "{:.2f}"),
@@ -508,6 +543,15 @@ def main():
             base = dict(raw.get("metrics") or {}, judge_version=raw.get("judge_version"))
 
     print_summary(cur, base, JUDGE_VERSION)
+
+    if args.no_llm and any(r.get("chunk_mrr5") is not None for r in results):
+        print("\n逐条检索明细（no-llm 模式）：")
+        print(f"{'id':<6}{'hit@3':>7}{'src@3':>7}{'块召回@3':>10}{'块排名':>8}{'块MRR':>8}")
+        for r in results:
+            if r.get("mrr5") is None:
+                continue
+            print(f"{r['id']:<6}{str(r.get('hit3')):>7}{str(r.get('src3')):>7}"
+                  f"{str(r.get('chunk_hit3')):>10}{str(r.get('chunk_rank')):>8}{str(r.get('chunk_mrr5')):>8}")
 
     failures = [r for r in results if not r["pass"]]
     if failures:
