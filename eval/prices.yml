@@ -12,3 +12,12 @@ qwen-max:
 deepseek-chat:
   input: 0.002      # 约 2 元/百万 tokens
   output: 0.008     # 约 8 元/百万 tokens
+
+# 重排模型（v1.9 新增埋点）
+# input：元 / 1K tokens（按文档 tokens 计费时填这里）
+# call ：元 / 次（如果控制台按调用次数计费，填这里；两者可同时存在）
+# 留 0 = 该费用不计入，报告里会显式标注「未计价」，避免用假单价污染成本结论
+rerank:
+  model: qwen3.7-text-rerank
+  input: 0.0
+  call: 0.0

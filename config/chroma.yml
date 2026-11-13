@@ -9,7 +9,7 @@ chunk_size: 200
 chunk_overlap: 20
 separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
 
-# 检索重排（本地 BM25+RRF；开通 gte-rerank 后可替换）
+# 检索重排
 rerank_enabled: true
 rerank_candidates: 10
 rerank_method: api

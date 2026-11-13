@@ -1,3 +1,6 @@
 chat_provider: deepseek
 chat_model_name: deepseek-chat
 embedding_model_name: text-embedding-v4
+
+# 忠实度后处理（v1.9）：删掉回答里「资料未提及」的数字事实（见 rag/faithfulness_guard.py）
+faithfulness_guard: true

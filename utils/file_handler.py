@@ -38,19 +38,31 @@ def listdir_with_allowed_type(path: str, allowed_types: tuple[str]):
     files = []
 
     if not os.path.isdir(path):
-        logger.error(f"[listdir_with_allowed_type]{path}不是文件夹")
-        return allowed_types
+        logger.error(f"[listdir_with_allowed_type]{path}不是文件夹，返回空列表")
+        return ()          # v1.9 修复：原实现返回 allowed_types，会把类型元组当成文件列表
 
-    for f in os.listdir(path):
-        if f.endswith(allowed_types):
-            files.append(os.path.join(path, f))
+    try:
+        for f in os.listdir(path):
+            if f.endswith(allowed_types):
+                files.append(os.path.join(path, f))
+    except Exception as e:
+        logger.error(f"[listdir_with_allowed_type]扫描{path}失败：{type(e).__name__}: {e}", exc_info=True)
+        return ()
 
     return tuple(files)
 
 
 def pdf_loader(filepath: str, passwd=None) -> list[Document]:
-    return PyPDFLoader(filepath, passwd).load()
+    try:
+        return PyPDFLoader(filepath, passwd).load()
+    except Exception as e:
+        logger.error(f"[pdf_loader]{filepath}解析失败：{type(e).__name__}: {e}", exc_info=True)
+        raise
 
 
 def txt_loader(filepath: str) -> list[Document]:
-    return TextLoader(filepath,encoding="utf-8").load()
+    try:
+        return TextLoader(filepath, encoding="utf-8").load()
+    except Exception as e:
+        logger.error(f"[txt_loader]{filepath}解析失败（编码可能不是 UTF-8）：{type(e).__name__}: {e}", exc_info=True)
+        raise

@@ -1,0 +1,217 @@
+{
+  "n_labels": 20,
+  "n_compared": 20,
+  "judge_version": "",
+  "judge_model": "",
+  "faithfulness": {
+    "agreement": 70.0,
+    "kappa": 0.0
+  },
+  "relevance": {
+    "exact": 75.0,
+    "within_1": 85.0,
+    "mae": 0.5
+  },
+  "items": [
+    {
+      "id": "R001",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R002",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R003",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R004",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R005",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R006",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R007",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R008",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R011",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R013",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "R015",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "T001",
+      "judge_faithful": false,
+      "my_faithful": true,
+      "faith_agree": false,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "T002",
+      "judge_faithful": false,
+      "my_faithful": true,
+      "faith_agree": false,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "T003",
+      "judge_faithful": false,
+      "my_faithful": true,
+      "faith_agree": false,
+      "judge_relevance": 4.0,
+      "my_relevance": 4.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "T005",
+      "judge_faithful": false,
+      "my_faithful": true,
+      "faith_agree": false,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "F001",
+      "judge_faithful": false,
+      "my_faithful": true,
+      "faith_agree": false,
+      "judge_relevance": 1.0,
+      "my_relevance": 4.0,
+      "rel_diff": -3.0,
+      "rel_pm1": false
+    },
+    {
+      "id": "F002",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 1.0,
+      "my_relevance": 4.0,
+      "rel_diff": -3.0,
+      "rel_pm1": false
+    },
+    {
+      "id": "A001",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 3.0,
+      "my_relevance": 5.0,
+      "rel_diff": -2.0,
+      "rel_pm1": false
+    },
+    {
+      "id": "M001",
+      "judge_faithful": false,
+      "my_faithful": true,
+      "faith_agree": false,
+      "judge_relevance": 3.0,
+      "my_relevance": 4.0,
+      "rel_diff": -1.0,
+      "rel_pm1": true
+    },
+    {
+      "id": "S002",
+      "judge_faithful": true,
+      "my_faithful": true,
+      "faith_agree": true,
+      "judge_relevance": 3.0,
+      "my_relevance": 4.0,
+      "rel_diff": -1.0,
+      "rel_pm1": true
+    }
+  ]
+}

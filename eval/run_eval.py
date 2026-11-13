@@ -30,6 +30,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from utils.logger_handler import logger  # noqa: E402
+
 EVAL_DIR = Path(__file__).resolve().parent
 DATASET = EVAL_DIR / "dataset.jsonl"
 RESULTS_DIR = EVAL_DIR / "results"
@@ -80,6 +82,16 @@ def load_price(model: str) -> dict:
         return data.get(model, {"input": 0.0, "output": 0.0})
     except Exception:
         return {"input": 0.0, "output": 0.0}
+
+
+def load_rerank_price() -> dict:
+    """重排单价（元/1K tokens 或 元/次）。留 0 表示未计价，报告里会标注。"""
+    try:
+        import yaml
+        data = yaml.safe_load(PRICES.read_text(encoding="utf-8")) or {}
+        return data.get("rerank", {}) or {}
+    except Exception:
+        return {}
 
 
 def token_usage(messages) -> tuple[int, int]:
@@ -197,9 +209,11 @@ def run_agent(agent, case: dict) -> dict:
                   for m in msgs for tc in (getattr(m, "tool_calls", None) or [])]
     answer = (msgs[-1].content if msgs and isinstance(msgs[-1].content, str) else "") or ""
     ti, to = token_usage(msgs)
+    tool_outputs = [str(m.content) for m in msgs if getattr(m, "type", "") == "tool" and m.content]
     return {
         "tools": [c["name"] for c in tool_calls],
         "tool_calls": tool_calls,
+        "tool_outputs": tool_outputs,     # v1.9：工具返回（报告类用例的数字依据在这里）
         "answer": answer.strip(),
         "latency": latency,
         "tokens_in": ti,
@@ -220,12 +234,15 @@ def run_with_retry(fn, *a, retries: int = 3, delays=(5, 15, 30), **kw):
         except Exception as e:
             msg = str(e)
             if not any(h in msg for h in RETRY_HINTS):
+                logger.error(f"[eval]不可重试错误，直接失败：{type(e).__name__}: {msg[:200]}")
                 raise
             last = e
             if attempt < retries - 1:
                 wait = delays[min(attempt, len(delays) - 1)]
+                logger.warning(f"[eval]可重试错误（{attempt + 1}/{retries}），{wait}s 后重试：{msg[:120]}")
                 print(f"      ↻ 可重试错误，{wait}s 后重试：{msg[:70]}")
                 time.sleep(wait)
+    logger.error(f"[eval]重试 {retries} 次仍失败：{type(last).__name__}: {str(last)[:200]}")
     raise last
 
 
@@ -241,17 +258,25 @@ def retrieval_query(case: dict) -> str:
 
 
 def retrieval_metrics(vector_store, case: dict, topk: int = 5, rerank: bool = False) -> dict:
-    """只对"答案来自知识库 txt"的用例计算检索指标"""
+    """只对"答案来自知识库 txt"的用例计算检索指标。
+
+    v1.9：重排路径带 trace 埋点（方法/耗时/调用次数/是否降级），
+    这样 P95 延迟里能区分「模型慢」还是「重排慢」。
+    """
     src_file = (case.get("gold_source") or "")
     if not src_file.endswith(".txt"):
-        return {"hit3": None, "src1": None, "src3": None, "src5": None, "mrr5": None}
+        return {"hit3": None, "src1": None, "src3": None, "src5": None, "mrr5": None,
+                "rerank_latency": None, "rerank_calls": 0, "rerank_fallback": None,
+                "rerank_method": None}
 
     query = retrieval_query(case)
+    trace = {}
     if rerank:
         from rag.reranker import rerank_search
-        docs = rerank_search(vector_store, query, topk=topk, candidates=10)
+        docs = rerank_search(vector_store, query, topk=topk, candidates=10, trace=trace)
     else:
         docs = vector_store.similarity_search(query, k=topk)
+        trace = {"rerank_method": "off", "rerank_calls": 0, "rerank_latency": 0.0, "rerank_fallback": False}
     out = {"hit3": None, "src1": False, "src3": False, "src5": False, "mrr5": 0.0,
            "chunk_hit3": None, "chunk_hit5": None, "chunk_rank": None, "chunk_mrr5": None}
 
@@ -282,7 +307,38 @@ def retrieval_metrics(vector_store, case: dict, topk: int = 5, rerank: bool = Fa
         out["chunk_hit3"] = 1 <= c_rank <= 3
         out["chunk_hit5"] = c_rank >= 1
         out["chunk_mrr5"] = round(1.0 / c_rank, 4) if c_rank else 0.0
+    out.update(trace)          # v1.9：重排埋点（方法/耗时/次数/降级）
     return out
+
+
+def numeric_check(answer: str, context: str) -> dict:
+    """v1.9 规则型忠实度：回答里的「带单位数字事实」是否都能在参考资料里找到。
+
+    和 judge 的区别：judge 是模型打分（有主观性、要花钱）；这里是纯规则（确定性、零成本），
+    两者互补——judge 看语义，规则看数字。指标名：number_support_rate。
+    """
+    try:
+        from rag.faithfulness_guard import extract_numeric_facts, _digits, _norm_digits
+    except Exception as e:
+        logger.warning(f"[numeric_check]后处理模块不可用，跳过数字检查：{type(e).__name__}: {e}")
+        return {"numbers_total": None, "numbers_supported": None, "number_support_rate": None}
+
+    if not answer:
+        return {"numbers_total": 0, "numbers_supported": 0, "number_support_rate": None}
+
+    facts = extract_numeric_facts(answer)
+    if not facts:
+        return {"numbers_total": 0, "numbers_supported": 0, "number_support_rate": None}
+
+    ctx_nums = _digits(context)
+    ok = sum(1 for f in facts if all(n in ctx_nums for n in f["nums"]))
+    unsupported = [f["raw"] for f in facts if any(n not in ctx_nums for n in f["nums"])]
+    return {
+        "numbers_total": len(facts),
+        "numbers_supported": ok,
+        "number_support_rate": round(ok / len(facts) * 100, 1),
+        "numbers_unsupported": unsupported[:8],
+    }
 
 
 JUDGE_PROMPT = """你是严格的质量审核员。只输出 JSON，不要解释。
@@ -327,7 +383,7 @@ def p50(values):
     return round(statistics.median(values), 2) if values else 0.0
 
 
-def summarize(results: list, price: dict) -> dict:
+def summarize(results: list, price: dict, rerank_price: dict | None = None) -> dict:
     total = len(results)
     passed = sum(1 for r in results if r["pass"])
     by_cat = {}
@@ -354,6 +410,21 @@ def summarize(results: list, price: dict) -> dict:
     avg_ti = statistics.mean(tin) if tin else 0
     avg_to = statistics.mean(tout) if tout else 0
 
+    # ---- v1.9：重排埋点汇总 ----
+    rr = [r for r in results if r.get("rerank_calls")]
+    rr_lat = [r["rerank_latency"] for r in results if r.get("rerank_latency") is not None]
+    rr_fallback = sum(1 for r in results if r.get("rerank_fallback"))
+    rp = rerank_price or {}
+    rerank_unit_priced = bool(rp.get("call") or rp.get("input"))
+
+    # ---- v1.9：规则型数字依据率 ----
+    num_cases = [r for r in results if r.get("numbers_total")]
+    num_total = sum(r.get("numbers_total") or 0 for r in num_cases)
+    num_ok = sum(r.get("numbers_supported") or 0 for r in num_cases)
+
+    base_cost = cost(avg_ti, avg_to)
+    rerank_cost = float(rp.get("call") or 0.0) * (1 if rr else 0)
+
     return {
         "n": total,
         "pass_rate": round(passed / total * 100, 1) if total else 0,
@@ -378,8 +449,19 @@ def summarize(results: list, price: dict) -> dict:
         "avg_tokens_out": round(avg_to),
         "avg_tokens": round(statistics.mean(toks)) if toks else 0,
         "total_tokens": sum(toks) if toks else 0,
-        "cost_per_query": round(cost(avg_ti, avg_to), 5),
-        "cost_per_1k": round(cost(avg_ti, avg_to) * 1000, 2),
+        "cost_per_query": round(base_cost, 5),
+        "cost_per_1k": round(base_cost * 1000, 2),
+        # v1.9 新增
+        "number_support_rate": round(num_ok / num_total * 100, 1) if num_total else None,
+        "numbers_total": num_total,
+        "numbers_unsupported": num_total - num_ok,
+        "rerank_calls": len(rr),
+        "rerank_fallbacks": rr_fallback,
+        "avg_rerank_latency": round(statistics.mean(rr_lat), 3) if rr_lat else None,
+        "p95_rerank_latency": p95(rr_lat) if rr_lat else None,
+        "cost_rerank_per_query": round(rerank_cost, 5),
+        "cost_total_per_query": round(base_cost + rerank_cost, 5),
+        "cost_rerank_priced": rerank_unit_priced,
     }
 
 
@@ -393,6 +475,7 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
     rows = [
         ("总体通过率", "pass_rate", "{:.1f}%"),
         ("忠实度", "faithfulness", "{:.1f}%"),
+        ("数字依据率(规则)", "number_support_rate", "{:.1f}%"),
         ("答案相关性(≥3.5)", "relevance_pass", "{:.1f}%"),
         ("相关性均分", "relevance_avg", "{:.2f}"),
         ("检索 hit@3", "hit_at_3", "{:.1f}%"),
@@ -408,6 +491,9 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
         ("P50/P95延迟", "p95_latency", "{:.2f}"),
         ("平均tokens(入/出)", "avg_tokens", "{:.0f}"),
         ("单次成本(元)", "cost_per_query", "{:.5f}"),
+        ("单次成本(含重排)", "cost_total_per_query", "{:.5f}"),
+        ("重排延迟均值/P95", "avg_rerank_latency", "{:.3f}"),
+        ("重排降级次数", "rerank_fallbacks", "{:.0f}"),
     ]
     print("\n" + "=" * 70)
     print(f"判据版本: {judge_version}    基线判据: {(base or {}).get('judge_version', '-') if base else '-'}")
@@ -447,16 +533,19 @@ def main():
     ap.add_argument("--judge-model", default="", help="评审模型名（默认同 agent），用于交叉评审")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--baseline", default=str(EVAL_DIR / "baseline.json"))
+    ap.add_argument("--compare", default="", help="用于对比的历史基线（不写回），默认同 --baseline")
     ap.add_argument("--tag", default="")
     ap.add_argument("--delay", type=float, default=0.3)
     ap.add_argument("--skip-preflight", action="store_true")
     ap.add_argument("--no-rerank", action="store_true", help="强制关闭本地重排")
     ap.add_argument("--rerank", action="store_true", help="强制开启本地重排（默认跟随 chroma.yml）")
+    ap.add_argument("--no-numbers", action="store_true", help="关闭规则型数字依据率检查（省一次检索）")
     args = ap.parse_args()
 
     baseline_path = Path(args.baseline)
     model = current_model()
     price = load_price(model)
+    rerank_price = load_rerank_price()
     ds_hash = dataset_sha256()
     commit = git_commit()
     all_cases = [json.loads(l) for l in DATASET.read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -465,6 +554,7 @@ def main():
     if not args.no_llm and not args.skip_preflight:
         ok, err = preflight(model)
         if not ok:
+            logger.error(f"[eval]预检失败，中止跑批（未消耗额度）：{err}")
             print("\n✗ 预检失败，已中止（未消耗跑批额度）")
             print(f"  原因: {err}")
             sys.exit(2)
@@ -477,7 +567,7 @@ def main():
         cases = cases[: args.limit]
     print(f"本次用例: {len(cases)} | 重复: {args.repeat} | judge: {'开' if args.judge else '关'}")
 
-    from utils.config_handler import chroma_conf
+    from utils.config_handler import chroma_conf, rag_conf
     from rag.vector_store import VectorStoreService
     _vst = VectorStoreService()
     vector_store = _vst.vector_store
@@ -497,6 +587,8 @@ def main():
             use_rerank = args.rerank or (not args.no_rerank and bool(chroma_conf.get("rerank_enabled")))
             rec.update(retrieval_metrics(vector_store, case, rerank=use_rerank))
             if not args.no_llm:
+                from rag import rag_service as _rag_mod
+                _rag_mod.take_rag_trace()          # 清空上一个用例的检索轨迹
                 runs = [run_with_retry(run_agent, agent, case) for _ in range(max(1, args.repeat))]
                 rec.update(runs[0])
                 rec = grade(case, rec)
@@ -509,21 +601,34 @@ def main():
                         passes.append(grade(case, tmp)["pass"])
                     rec["stable"] = len(set(passes)) == 1
                     rec["run_passes"] = passes
-                if args.judge and rec.get("answer"):
-                    docs = retriever.invoke(case["question"])[:3]
-                    ctx = "\n".join(d.page_content for d in docs)
-                    try:
-                        j = judge_answer(case["question"], ctx, rec["answer"],
-                                         args.judge_provider or None, args.judge_model or None)
-                        rec.update(j)
-                    except Exception as e:
-                        rec["judge_error"] = str(e)[:200]
+                if rec.get("answer") and (args.judge or not args.no_numbers):
+                    # v1.9：评分依据 = 模型实际看到的资料（RAG 上下文 + 所有工具返回）
+                    trace = _rag_mod.take_rag_trace()
+                    ctx_parts = [t["context"] for t in trace if t.get("context")]
+                    rec["eval_ctx_docs"] = sum(int(t.get("n_docs") or 0) for t in trace)
+                    tool_outs = [str(t)[:2000] for t in (rec.get("tool_outputs") or [])]
+                    rec["eval_ctx_tools"] = len(tool_outs)
+                    eval_ctx = "\n".join(ctx_parts + tool_outs)
+                    if not eval_ctx:
+                        logger.warning(f"[eval] {case['id']} 未捕获检索/工具上下文，回退到独立检索")
+                        docs = retriever.invoke(case["question"])[:3]
+                        eval_ctx = "\n".join(d.page_content for d in docs)
+                    if not args.no_numbers:
+                        rec.update(numeric_check(rec["answer"], eval_ctx))
+                    if args.judge:
+                        try:
+                            j = judge_answer(case["question"], eval_ctx, rec["answer"],
+                                             args.judge_provider or None, args.judge_model or None)
+                            rec.update(j)
+                        except Exception as e:
+                            rec["judge_error"] = str(e)[:200]
             else:
                 rec["checks"], rec["layer"] = {}, ""
                 rec["pass"] = True if rec.get("hit3") is None else bool(rec["hit3"])
             print(f"[{i}/{len(cases)}] {case['id']:<6} {'PASS' if rec.get('pass') else 'FAIL'}  {rec.get('layer','')}  tok={rec.get('tokens_in',0)}/{rec.get('tokens_out',0)}")
         except Exception as e:
             rec.update({"pass": False, "layer": "系统层", "error": f"{type(e).__name__}: {e}"})
+            logger.error(f"[eval] {case['id']} 用例执行异常：{type(e).__name__}: {e}", exc_info=True)
             print(f"[{i}/{len(cases)}] {case['id']:<6} ERROR {str(e)[:110]}")
         results.append(rec)
         if args.delay:
@@ -534,15 +639,16 @@ def main():
     out_file = RESULTS_DIR / f"run_{ts}.jsonl"
     out_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in results), encoding="utf-8")
 
-    cur = summarize(results, price)
+    cur = summarize(results, price, rerank_price)
     if args.repeat > 1:
         stable = [r for r in results if "stable" in r]
         cur["stability"] = round(sum(1 for r in stable if r["stable"]) / len(stable) * 100, 1) if stable else None
     errors = [r for r in results if r.get("layer") == "系统层"]
 
     base = None
-    if baseline_path.exists() and not args.save_baseline:
-        raw = json.loads(baseline_path.read_text(encoding="utf-8"))
+    compare_path = Path(args.compare) if args.compare else baseline_path
+    if compare_path.exists():
+        raw = json.loads(compare_path.read_text(encoding="utf-8"))
         if raw.get("model") and raw["model"] != model:
             print(f"\n⚠️ 基线模型 {raw['model']} ≠ 本次 {model}：不可横比，忽略基线。")
         elif raw.get("judge_version") and raw["judge_version"] != JUDGE_VERSION:
@@ -551,6 +657,9 @@ def main():
             base = dict(raw.get("metrics") or {}, judge_version=raw.get("judge_version"))
 
     print_summary(cur, base, JUDGE_VERSION)
+    if cur.get("rerank_calls") and not cur.get("cost_rerank_priced"):
+        print("⚠️ 重排成本未计价（eval/prices.yml 中 rerank.call / rerank.input 为 0），"
+              "当前成本只含对话 tokens，别当全成本用。")
 
     if args.no_llm and any(r.get("chunk_mrr5") is not None for r in results):
         print("\n逐条检索明细（no-llm 模式）：")
@@ -586,6 +695,16 @@ def main():
         "judge_model": args.judge_model or "",
         "errors": len(errors),
         "metrics": cur,
+        # v1.9：把重排配置与单价写进基线，保证「同一份基线 = 同一套检索配置」
+        "rerank": {
+            "enabled": bool(chroma_conf.get("rerank_enabled")),
+            "method": chroma_conf.get("rerank_method"),
+            "model": chroma_conf.get("rerank_model"),
+            "candidates": chroma_conf.get("rerank_candidates"),
+            "alpha": chroma_conf.get("rerank_bm25_alpha"),
+        },
+        "rerank_price": rerank_price,
+        "faithfulness_guard": bool(rag_conf.get("faithfulness_guard", True)),
         "results_file": str(out_file),
     }
     if args.save_baseline or not baseline_path.exists():

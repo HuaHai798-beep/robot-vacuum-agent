@@ -24,10 +24,13 @@ def monitor_tool(
 
         if request.tool_call['name'] == "fill_context_for_report":
             request.runtime.context["report"] = True
+            logger.info("[middleware]检测到报告信号灯工具，已置 report=True（后续切报告提示词）")
 
         return result
     except Exception as e:
-        logger.error(f"工具{request.tool_call['name']}调用失败，原因：{str(e)}")
+        # 工具层异常：记全栈再抛给 Agent 决策（不在这里吞，避免模型误以为工具成功）
+        logger.error(f"[tool monitor]工具{request.tool_call['name']}调用失败：{type(e).__name__}: {e}",
+                     exc_info=True)
         raise e
 
 
@@ -40,13 +43,31 @@ def log_before_model(
     logger.info(f"[log_before_model]即将调用模型，带有{len(state['messages'])}条消息。")
 
     # 输出最新一条消息的类型和内容（debug级别日志）
-    logger.debug(f"[log_before_model]{type(state['messages'][-1]).__name__} | {state['messages'][-1].content}")
+    try:
+        last = state["messages"][-1]
+        logger.debug(f"[log_before_model]{type(last).__name__} | {last.content}")
+    except Exception as e:
+        logger.warning(f"[log_before_model]读取最后一条消息失败（不影响主流程）：{type(e).__name__}: {e}")
 
     return None
 
 @dynamic_prompt                        # 每一次在生成提示词之前，调用此函数
 def report_prompt_switch(request: ModelRequest):    # 动态切换提示词
-    is_report = request.runtime.context.get("report", False)
+    try:
+        is_report = bool(request.runtime.context.get("report", False))
+    except Exception as e:
+        logger.warning(f"[middleware]读取 runtime.context 失败，按客服模式处理：{type(e).__name__}: {e}")
+        is_report = False
+
     if is_report:                      # 是报告生成场景，返回报告生成提示词内容
-        return load_report_prompts()
-    return load_system_prompts()
+        try:
+            return load_report_prompts()
+        except Exception as e:
+            # 降级：报告提示词加载失败时退回客服提示词，保证还能回答
+            logger.error(f"[middleware]报告提示词加载失败，降级为客服提示词：{type(e).__name__}: {e}",
+                         exc_info=True)
+    try:
+        return load_system_prompts()
+    except Exception as e:
+        logger.error(f"[middleware]系统提示词加载失败，使用兜底提示词：{type(e).__name__}: {e}", exc_info=True)
+        return "你是扫地机器人客服，只依据工具返回内容回答，资料未提及的内容不要编造。"

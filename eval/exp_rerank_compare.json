@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "cases": 16,
+    "candidates": 10,
+    "topk": 3,
+    "alphas": [
+      0.3,
+      0.5,
+      1.0
+    ],
+    "elapsed_s": 21.5,
+    "note": "v1.9 修复了 BM25 候选-索引错位（v1.7 的结论因此失效，需以本结果为准）"
+  },
+  "variants": {
+    "vector": {
+      "n": 16,
+      "chunk_recall@3": 87.5,
+      "chunk_MRR@5": 0.812,
+      "src@3": 100.0,
+      "hit@3": 93.8
+    },
+    "api": {
+      "n": 16,
+      "chunk_recall@3": 100.0,
+      "chunk_MRR@5": 0.969,
+      "src@3": 100.0,
+      "hit@3": 100.0
+    },
+    "bm25@0.3": {
+      "n": 16,
+      "chunk_recall@3": 93.8,
+      "chunk_MRR@5": 0.844,
+      "src@3": 100.0,
+      "hit@3": 100.0
+    },
+    "bm25@0.5": {
+      "n": 16,
+      "chunk_recall@3": 100.0,
+      "chunk_MRR@5": 0.927,
+      "src@3": 100.0,
+      "hit@3": 100.0
+    },
+    "bm25@1.0": {
+      "n": 16,
+      "chunk_recall@3": 100.0,
+      "chunk_MRR@5": 0.938,
+      "src@3": 100.0,
+      "hit@3": 100.0
+    }
+  }
+}

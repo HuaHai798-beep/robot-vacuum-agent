@@ -1,0 +1,94 @@
+{
+  "timestamp": "2026-11-14T00:06:31",
+  "judge_version": "j5",
+  "model": "deepseek-chat",
+  "price": {
+    "input": 0.002,
+    "output": 0.008
+  },
+  "dataset_sha256": "0154a5923441",
+  "dataset_size": 30,
+  "git_commit": "933c6fd",
+  "tag": "v1.9 guard+metrics+ctx",
+  "repeat": 1,
+  "judge": true,
+  "judge_provider": "deepseek",
+  "judge_model": "deepseek-reasoner",
+  "errors": 0,
+  "metrics": {
+    "n": 30,
+    "pass_rate": 96.7,
+    "by_category": {
+      "retrieval": {
+        "n": 15,
+        "pass_rate": 100.0
+      },
+      "tool": {
+        "n": 5,
+        "pass_rate": 100.0
+      },
+      "refuse": {
+        "n": 3,
+        "pass_rate": 100.0
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 100.0
+      },
+      "multi_turn": {
+        "n": 1,
+        "pass_rate": 100.0
+      },
+      "safety": {
+        "n": 4,
+        "pass_rate": 75.0
+      }
+    },
+    "tool_call_acc": 95.5,
+    "tool_arg_acc": 100.0,
+    "hit_at_3": 100.0,
+    "src_at_1": 87.5,
+    "src_at_3": 100.0,
+    "src_at_5": 100.0,
+    "mrr5": 0.927,
+    "chunk_recall3": 100.0,
+    "chunk_recall5": 100.0,
+    "chunk_mrr5": 0.969,
+    "faithfulness": 66.7,
+    "relevance_avg": 4.27,
+    "relevance_pass": 76.7,
+    "avg_latency": 4.49,
+    "p50_latency": 4.33,
+    "p95_latency": 11.41,
+    "avg_tokens_in": 2575,
+    "avg_tokens_out": 298,
+    "avg_tokens": 2874,
+    "total_tokens": 86206,
+    "cost_per_query": 0.00754,
+    "cost_per_1k": 7.54,
+    "number_support_rate": 89.6,
+    "numbers_total": 115,
+    "numbers_unsupported": 12,
+    "rerank_calls": 16,
+    "rerank_fallbacks": 0,
+    "avg_rerank_latency": 0.369,
+    "p95_rerank_latency": 0.48,
+    "cost_rerank_per_query": 0.0,
+    "cost_total_per_query": 0.00754,
+    "cost_rerank_priced": false
+  },
+  "rerank": {
+    "enabled": true,
+    "method": "api",
+    "model": "qwen3.7-text-rerank",
+    "candidates": 10,
+    "alpha": null
+  },
+  "rerank_price": {
+    "model": "qwen3.7-text-rerank",
+    "input": 0.0,
+    "call": 0.0
+  },
+  "faithfulness_guard": true,
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261114_0006.jsonl"
+}

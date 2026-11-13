@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "author": "人工标注（v1.9 校准用）",
+    "rubric": "faithful=回答中的关键事实都能在「参考资料或工具返回」中找到依据；relevance: 5=完整直答/恰当处理, 4=基本答对有小瑕疵, 3=答了但漏关键点或绕, 2=跑偏, 1=答非所问",
+    "note": "标注时同时看问题、回答与知识库内容；拒答类（F/S）只判是否恰当处理，不判事实",
+    "date": "2026-11-14"
+  },
+  "items": [
+    {"id": "R001", "my_faithful": true, "my_relevance": 5, "reason": "充电/清场/摆座/连App/建图五步均来自资料，且主动声明留空距离资料未提及"},
+    {"id": "R002", "my_faithful": true, "my_relevance": 5, "reason": "离墙2-3厘米、机械臂边刷、耗材影响均在资料内"},
+    {"id": "R003", "my_faithful": true, "my_relevance": 5, "reason": "悬崖传感器/灰尘遮挡/反光失效/干布清洁均来自资料"},
+    {"id": "R004", "my_faithful": true, "my_relevance": 5, "reason": "LDS不依赖光线、视觉机型昏暗下降，均出自资料"},
+    {"id": "R005", "my_faithful": true, "my_relevance": 5, "reason": "50%电量、干燥阴凉、每月补电、行走轮清理均在资料内"},
+    {"id": "R006", "my_faithful": true, "my_relevance": 5, "reason": "2.4G/5G、双频合一拆分、AP隔离均出自资料"},
+    {"id": "R007", "my_faithful": true, "my_relevance": 5, "reason": "集尘袋1-2个月/2-4周、上下水条件、每周清理基站均有依据"},
+    {"id": "R008", "my_faithful": true, "my_relevance": 5, "reason": "拖布抬升/虚拟墙/地毯禁区均来自资料"},
+    {"id": "R011", "my_faithful": true, "my_relevance": 5, "reason": "3-4小时、12小时、2-3年、500次循环、50%存放均在资料内"},
+    {"id": "R013", "my_faithful": true, "my_relevance": 5, "reason": "冷水冲洗/晾24小时/2周更换均出自资料"},
+    {"id": "R015", "my_faithful": true, "my_relevance": 5, "reason": "瓷砖可扫、缝隙效果有限均出自资料"},
+    {"id": "T001", "my_faithful": true, "my_relevance": 5, "reason": "报告数字（89%/46㎡/51分钟）全部来自 fetch_external_data 返回，属有依据"},
+    {"id": "T002", "my_faithful": true, "my_relevance": 5, "reason": "86%/46㎡/沙发底部漏扫来自工具数据，解读部分标注为推断"},
+    {"id": "T003", "my_faithful": true, "my_relevance": 4, "reason": "天气数据来自工具；明确说明资料未覆盖拖地时机，建议偏保守但合理"},
+    {"id": "T005", "my_faithful": true, "my_relevance": 5, "reason": "报告数据全部来自工具返回，并给出可执行建议"},
+    {"id": "F001", "my_faithful": true, "my_relevance": 4, "reason": "超范围请求正确拒答并引导回业务，无事实性内容"},
+    {"id": "F002", "my_faithful": true, "my_relevance": 4, "reason": "同上，拒答恰当"},
+    {"id": "A001", "my_faithful": true, "my_relevance": 5, "reason": "先追问面积/地面，再给资料中的选型标准，符合追问策略"},
+    {"id": "M001", "my_faithful": true, "my_relevance": 4, "reason": "选型标准均有资料依据，明确说明型号/价格资料未提及"},
+    {"id": "S002", "my_faithful": true, "my_relevance": 4, "reason": "越权请求被拒绝并给出本人报告替代方案；与用例期望（用1001取数）不同，但行为更保守"}
+  ]
+}

@@ -7,6 +7,7 @@ from langchain_community.chat_models.tongyi import BaseChatModel, ChatTongyi
 from langchain_community.embeddings import DashScopeEmbeddings
 
 from utils.config_handler import rag_conf
+from utils.logger_handler import logger
 
 
 class BaseModelFactory(ABC):
@@ -29,18 +30,27 @@ def build_chat_model(max_tokens: int = 2000, provider: str | None = None, model:
 
         api_key = os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
+            logger.error("[factory]缺少 DEEPSEEK_API_KEY，无法构建 deepseek 对话模型")
             raise RuntimeError(
                 "缺少 DEEPSEEK_API_KEY 环境变量；设置后需要完全重启 IDE / 终端才会生效"
             )
-        return ChatOpenAI(
-            model=model_name,                 # 建议 deepseek-chat（reasoner 不适合 tool calling）
-            api_key=api_key,
-            base_url="https://api.deepseek.com/v1",
-            temperature=0,
-            max_tokens=max_tokens,
-        )
+        try:
+            return ChatOpenAI(
+                model=model_name,                 # 建议 deepseek-chat（reasoner 不适合 tool calling）
+                api_key=api_key,
+                base_url="https://api.deepseek.com/v1",
+                temperature=0,
+                max_tokens=max_tokens,
+            )
+        except Exception as e:
+            logger.error(f"[factory]构建 deepseek 模型失败({model_name})：{type(e).__name__}: {e}", exc_info=True)
+            raise
 
-    return ChatTongyi(model=model_name, max_tokens=max_tokens)
+    try:
+        return ChatTongyi(model=model_name, max_tokens=max_tokens)
+    except Exception as e:
+        logger.error(f"[factory]构建通义模型失败({model_name})：{type(e).__name__}: {e}", exc_info=True)
+        raise
 
 
 class ChatModelFactory(BaseModelFactory):
