@@ -268,10 +268,11 @@ JUDGE_PROMPT = """你是严格的质量审核员。只输出 JSON，不要解释
 只输出 JSON：{{"faithful": true/false, "relevance": 1-5, "unsupported": ["无依据的说法"]}}"""
 
 
-def judge_answer(model_name: str, question: str, context: str, answer: str) -> dict:
+def judge_answer(question: str, context: str, answer: str,
+                 provider: str | None = None, model: str | None = None) -> dict:
     from model.factory import build_chat_model
 
-    llm = build_chat_model(max_tokens=220)
+    llm = build_chat_model(max_tokens=260, provider=provider, model=model)
     out = llm.invoke(JUDGE_PROMPT.format(q=question, ctx=context[:6000], a=answer[:3000])).content
     m = re.search(r"\{.*\}", out, re.S)
     data = json.loads(m.group(0)) if m else {}
@@ -405,6 +406,8 @@ def main():
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--judge", action="store_true")
+    ap.add_argument("--judge-provider", default="", help="评审模型 provider（默认同 agent）")
+    ap.add_argument("--judge-model", default="", help="评审模型名（默认同 agent），用于交叉评审")
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--baseline", default=str(EVAL_DIR / "baseline.json"))
     ap.add_argument("--tag", default="")
@@ -467,7 +470,8 @@ def main():
                     docs = retriever.invoke(case["question"])[:3]
                     ctx = "\n".join(d.page_content for d in docs)
                     try:
-                        j = judge_answer(model, case["question"], ctx, rec["answer"])
+                        j = judge_answer(case["question"], ctx, rec["answer"],
+                                         args.judge_provider or None, args.judge_model or None)
                         rec.update(j)
                     except Exception as e:
                         rec["judge_error"] = str(e)[:200]
@@ -526,6 +530,8 @@ def main():
         "tag": args.tag,
         "repeat": args.repeat,
         "judge": args.judge,
+        "judge_provider": args.judge_provider or "",
+        "judge_model": args.judge_model or "",
         "errors": len(errors),
         "metrics": cur,
         "results_file": str(out_file),

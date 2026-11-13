@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-11-13T14:08:49",
+  "judge_version": "j5",
+  "model": "deepseek-chat",
+  "price": {
+    "input": 0.002,
+    "output": 0.008
+  },
+  "dataset_sha256": "a9c065e8e475",
+  "dataset_size": 30,
+  "git_commit": "6f717b1",
+  "tag": "deepseek-chat compact prompt + cross judge(reasoner)",
+  "repeat": 1,
+  "judge": true,
+  "judge_provider": "deepseek",
+  "judge_model": "deepseek-reasoner",
+  "errors": 0,
+  "metrics": {
+    "n": 30,
+    "pass_rate": 96.7,
+    "by_category": {
+      "retrieval": {
+        "n": 15,
+        "pass_rate": 93.3
+      },
+      "tool": {
+        "n": 5,
+        "pass_rate": 100.0
+      },
+      "refuse": {
+        "n": 3,
+        "pass_rate": 100.0
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 100.0
+      },
+      "multi_turn": {
+        "n": 1,
+        "pass_rate": 100.0
+      },
+      "safety": {
+        "n": 4,
+        "pass_rate": 100.0
+      }
+    },
+    "tool_call_acc": 100.0,
+    "tool_arg_acc": 100.0,
+    "hit_at_3": 93.8,
+    "src_at_1": 81.2,
+    "src_at_3": 100.0,
+    "src_at_5": 100.0,
+    "mrr5": 0.896,
+    "faithfulness": 66.7,
+    "relevance_avg": 4.1,
+    "relevance_pass": 63.3,
+    "avg_latency": 4.99,
+    "p50_latency": 3.97,
+    "p95_latency": 15.17,
+    "avg_tokens_in": 2537,
+    "avg_tokens_out": 327,
+    "avg_tokens": 2865,
+    "total_tokens": 85947,
+    "cost_per_query": 0.00769,
+    "cost_per_1k": 7.69
+  },
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261113_1408.jsonl"
+}

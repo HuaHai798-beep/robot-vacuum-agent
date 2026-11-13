@@ -15,14 +15,14 @@ class BaseModelFactory(ABC):
         pass
 
 
-def build_chat_model(max_tokens: int = 2000):
+def build_chat_model(max_tokens: int = 2000, provider: str | None = None, model: str | None = None):
     """按 config/rag.yml 的 chat_provider 构建对话模型（dashscope | deepseek）
 
     - dashscope：ChatTongyi（通义百炼）
     - deepseek ：ChatOpenAI 走 DeepSeek 的 OpenAI 兼容接口
     """
-    provider = (rag_conf.get("chat_provider") or "dashscope").lower()
-    model_name = rag_conf["chat_model_name"]
+    provider = (provider or rag_conf.get("chat_provider") or "dashscope").lower()
+    model_name = model or rag_conf["chat_model_name"]
 
     if provider == "deepseek":
         from langchain_openai import ChatOpenAI
