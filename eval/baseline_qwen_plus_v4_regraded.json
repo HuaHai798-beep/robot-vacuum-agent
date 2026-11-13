@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-13T13:26:54",
+  "timestamp": "2026-11-13T13:46:20",
   "judge_version": "j5",
   "model": "qwen-plus",
   "price": {
@@ -9,10 +9,10 @@
   "note": "离线重打分：基于 run_20261113_1258.jsonl 的模型输出，仅重跑判据，未重新调用模型",
   "source_results": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261113_1258.jsonl",
   "pass_before_regrade": 22,
-  "pass_after_regrade": 26,
+  "pass_after_regrade": 25,
   "metrics": {
     "n": 30,
-    "pass_rate": 86.7,
+    "pass_rate": 83.3,
     "by_category": {
       "retrieval": {
         "n": 15,
@@ -36,10 +36,10 @@
       },
       "safety": {
         "n": 4,
-        "pass_rate": 100.0
+        "pass_rate": 75.0
       }
     },
-    "tool_call_acc": 95.2,
+    "tool_call_acc": 90.9,
     "tool_arg_acc": 100.0,
     "hit_at_3": 93.8,
     "src_at_1": 81.2,

@@ -83,13 +83,22 @@ def load_price(model: str) -> dict:
 
 
 def token_usage(messages) -> tuple[int, int]:
-    """返回 (输入 tokens, 输出 tokens)。ChatTongyi 把用量放在 response_metadata.token_usage。"""
+    """返回 (输入 tokens, 输出 tokens)。
+    兼容三种来源：
+      1) LangChain usage_metadata（input_tokens / output_tokens）
+      2) ChatTongyi: response_metadata.token_usage.input_tokens / output_tokens
+      3) ChatOpenAI(DeepSeek): prompt_tokens / completion_tokens
+    """
     ti = to = 0
     for m in messages or []:
-        rm = getattr(m, "response_metadata", None) or {}
-        tu = rm.get("token_usage") or {}
-        ti += int(tu.get("input_tokens") or 0)
-        to += int(tu.get("output_tokens") or 0)
+        u = getattr(m, "usage_metadata", None)
+        if isinstance(u, dict) and (u.get("input_tokens") or u.get("output_tokens")):
+            ti += int(u.get("input_tokens") or 0)
+            to += int(u.get("output_tokens") or 0)
+            continue
+        tu = (getattr(m, "response_metadata", None) or {}).get("token_usage") or {}
+        ti += int(tu.get("input_tokens") or tu.get("prompt_tokens") or 0)
+        to += int(tu.get("output_tokens") or tu.get("completion_tokens") or 0)
     return ti, to
 
 
@@ -260,9 +269,9 @@ JUDGE_PROMPT = """你是严格的质量审核员。只输出 JSON，不要解释
 
 
 def judge_answer(model_name: str, question: str, context: str, answer: str) -> dict:
-    from langchain_community.chat_models.tongyi import ChatTongyi
+    from model.factory import build_chat_model
 
-    llm = ChatTongyi(model=model_name, max_tokens=220)
+    llm = build_chat_model(max_tokens=220)
     out = llm.invoke(JUDGE_PROMPT.format(q=question, ctx=context[:6000], a=answer[:3000])).content
     m = re.search(r"\{.*\}", out, re.S)
     data = json.loads(m.group(0)) if m else {}
@@ -382,8 +391,8 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
 
 def preflight(model: str) -> tuple[bool, str]:
     try:
-        from langchain_community.chat_models.tongyi import ChatTongyi
-        ChatTongyi(model=model, max_tokens=1).invoke("ping")
+        from model.factory import build_chat_model
+        build_chat_model(max_tokens=1).invoke("ping")
         return True, ""
     except Exception as e:
         return False, str(e)[:400]

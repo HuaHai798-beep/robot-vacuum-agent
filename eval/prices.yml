@@ -9,3 +9,6 @@ qwen-turbo:
 qwen-max:
   input: 0.0024
   output: 0.0096
+deepseek-chat:
+  input: 0.002      # 约 2 元/百万 tokens
+  output: 0.008     # 约 8 元/百万 tokens

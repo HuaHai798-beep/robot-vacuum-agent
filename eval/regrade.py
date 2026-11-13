@@ -25,6 +25,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("results_file")
     ap.add_argument("--out", default="")
+    ap.add_argument("--model", default="", help="源运行使用的模型（默认取当前配置）")
     args = ap.parse_args()
 
     cases = {c["id"]: c for c in (json.loads(l) for l in DATASET.read_text(encoding="utf-8").splitlines() if l.strip())}
@@ -42,7 +43,7 @@ def main():
         rec = grade({**case, "expect_args": rec["expect_args"]}, rec)
         out.append(rec)
 
-    model = current_model()
+    model = args.model or current_model()
     price = load_price(model)
     metrics = summarize(out, price)
 

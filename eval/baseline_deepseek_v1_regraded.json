@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-11-13T13:46:20",
+  "judge_version": "j5",
+  "model": "deepseek-chat",
+  "price": {
+    "input": 0.002,
+    "output": 0.008
+  },
+  "note": "离线重打分：基于 run_20261113_1345.jsonl 的模型输出，仅重跑判据，未重新调用模型",
+  "source_results": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261113_1345.jsonl",
+  "pass_before_regrade": 29,
+  "pass_after_regrade": 30,
+  "metrics": {
+    "n": 30,
+    "pass_rate": 100.0,
+    "by_category": {
+      "retrieval": {
+        "n": 15,
+        "pass_rate": 100.0
+      },
+      "tool": {
+        "n": 5,
+        "pass_rate": 100.0
+      },
+      "refuse": {
+        "n": 3,
+        "pass_rate": 100.0
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 100.0
+      },
+      "multi_turn": {
+        "n": 1,
+        "pass_rate": 100.0
+      },
+      "safety": {
+        "n": 4,
+        "pass_rate": 100.0
+      }
+    },
+    "tool_call_acc": 100.0,
+    "tool_arg_acc": 100.0,
+    "hit_at_3": 93.8,
+    "src_at_1": 81.2,
+    "src_at_3": 100.0,
+    "src_at_5": 100.0,
+    "mrr5": 0.896,
+    "faithfulness": 63.3,
+    "relevance_avg": 3.27,
+    "relevance_pass": 43.3,
+    "avg_latency": 4.78,
+    "p50_latency": 4.28,
+    "p95_latency": 12.03,
+    "avg_tokens_in": 4741,
+    "avg_tokens_out": 343,
+    "avg_tokens": 5083,
+    "total_tokens": 152504,
+    "cost_per_query": 0.01222,
+    "cost_per_1k": 12.22
+  }
+}

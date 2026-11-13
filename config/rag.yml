@@ -1,2 +1,3 @@
-chat_model_name: qwen-plus
+chat_provider: deepseek
+chat_model_name: deepseek-chat
 embedding_model_name: text-embedding-v4
