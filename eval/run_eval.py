@@ -542,6 +542,12 @@ def main():
     ap.add_argument("--no-numbers", action="store_true", help="关闭规则型数字依据率检查（省一次检索）")
     args = ap.parse_args()
 
+    # 防呆：no-llm 只测检索层，通过率是假数字，绝不能写进基线
+    if args.no_llm and args.save_baseline:
+        print("✗ 拒绝执行：--no-llm 的结果不能写基线（通过率是假的）。")
+        print("  只测检索层时去掉 --save-baseline；要更新基线请用全量模式（不加 --no-llm）。")
+        sys.exit(2)
+
     baseline_path = Path(args.baseline)
     model = current_model()
     price = load_price(model)
@@ -565,7 +571,8 @@ def main():
         cases = [c for c in cases if c["category"] == args.category]
     if args.limit:
         cases = cases[: args.limit]
-    print(f"本次用例: {len(cases)} | 重复: {args.repeat} | judge: {'开' if args.judge else '关'}")
+    mode_label = "检索层(no-llm)" if args.no_llm else "端到端(full)"
+    print(f"本次用例: {len(cases)} | 重复: {args.repeat} | judge: {'开' if args.judge else '关'} | 模式: {mode_label}")
 
     from utils.config_handler import chroma_conf, rag_conf
     from rag.vector_store import VectorStoreService
@@ -657,6 +664,10 @@ def main():
             base = dict(raw.get("metrics") or {}, judge_version=raw.get("judge_version"))
 
     print_summary(cur, base, JUDGE_VERSION)
+    if args.no_llm:
+        print("\n⚠️ 当前是 no-llm 模式：只测检索层（embedding + 向量库 + rerank），"
+              "工具/拒答/追问/忠实度都没有测，上面的「通过率」不可信；"
+              "请只看 hit@3 / 块召回@3 / 块 MRR。")
     if cur.get("rerank_calls") and not cur.get("cost_rerank_priced"):
         print("⚠️ 重排成本未计价（eval/prices.yml 中 rerank.call / rerank.input 为 0），"
               "当前成本只含对话 tokens，别当全成本用。")
@@ -691,6 +702,7 @@ def main():
         "tag": args.tag,
         "repeat": args.repeat,
         "judge": args.judge,
+        "mode": "no_llm" if args.no_llm else "full",
         "judge_provider": args.judge_provider or "",
         "judge_model": args.judge_model or "",
         "errors": len(errors),
