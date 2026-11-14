@@ -13,11 +13,12 @@ deepseek-chat:
   input: 0.002      # 约 2 元/百万 tokens
   output: 0.008     # 约 8 元/百万 tokens
 
-# 重排模型（v1.9 新增埋点）
-# input：元 / 1K tokens（按文档 tokens 计费时填这里）
-# call ：元 / 次（如果控制台按调用次数计费，填这里；两者可同时存在）
-# 留 0 = 该费用不计入，报告里会显式标注「未计价」，避免用假单价污染成本结论
+# 重排模型（v2.1 开始入账）
+# 参考价来源：阿里云百炼 qwen3-rerank 文档（2026-10-11 更新，华北2）
+#   0.069 USD / 百万 tokens ≈ 0.0005 元 / 千 tokens（汇率按 7.2 估算）
+# ⚠️ 本项目实际使用 qwen3.7-text-rerank，官方未单列价格 → 以 qwen3-rerank 近似，
+#    正式对外报成本前请用控制台账单核对；调价只改这里，不用动代码。
 rerank:
   model: qwen3.7-text-rerank
-  input: 0.0
-  call: 0.0
+  input: 0.0005     # 元 / 1K tokens（近似参考价）
+  call: 0.0         # 若按次计费，填这里

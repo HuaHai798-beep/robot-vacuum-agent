@@ -1,16 +1,19 @@
 {
   "n_labels": 20,
   "n_compared": 20,
-  "judge_version": "j5",
-  "judge_model": "deepseek-chat",
+  "judge_version": "j6",
+  "judge_model": "deepseek-reasoner",
+  "judge_provider": "deepseek",
+  "agent_model": "deepseek-chat",
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261115_0144.jsonl",
   "faithfulness": {
-    "agreement": 70.0,
-    "kappa": 0.0
+    "agreement": 95.0,
+    "kappa": 0.828
   },
   "relevance": {
-    "exact": 75.0,
-    "within_1": 85.0,
-    "mae": 0.5
+    "exact": 95.0,
+    "within_1": 100.0,
+    "mae": 0.05
   },
   "items": [
     {
@@ -126,8 +129,8 @@
     {
       "id": "T001",
       "judge_faithful": false,
-      "my_faithful": true,
-      "faith_agree": false,
+      "my_faithful": false,
+      "faith_agree": true,
       "judge_relevance": 5.0,
       "my_relevance": 5.0,
       "rel_diff": 0.0,
@@ -136,11 +139,11 @@
     {
       "id": "T002",
       "judge_faithful": false,
-      "my_faithful": true,
-      "faith_agree": false,
+      "my_faithful": false,
+      "faith_agree": true,
       "judge_relevance": 5.0,
-      "my_relevance": 5.0,
-      "rel_diff": 0.0,
+      "my_relevance": 4.0,
+      "rel_diff": 1.0,
       "rel_pm1": true
     },
     {
@@ -156,8 +159,8 @@
     {
       "id": "T005",
       "judge_faithful": false,
-      "my_faithful": true,
-      "faith_agree": false,
+      "my_faithful": false,
+      "faith_agree": true,
       "judge_relevance": 5.0,
       "my_relevance": 5.0,
       "rel_diff": 0.0,
@@ -165,42 +168,42 @@
     },
     {
       "id": "F001",
-      "judge_faithful": false,
+      "judge_faithful": true,
       "my_faithful": true,
-      "faith_agree": false,
-      "judge_relevance": 1.0,
-      "my_relevance": 4.0,
-      "rel_diff": -3.0,
-      "rel_pm1": false
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
     },
     {
       "id": "F002",
       "judge_faithful": true,
       "my_faithful": true,
       "faith_agree": true,
-      "judge_relevance": 1.0,
-      "my_relevance": 4.0,
-      "rel_diff": -3.0,
-      "rel_pm1": false
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
+      "rel_pm1": true
     },
     {
       "id": "A001",
       "judge_faithful": true,
       "my_faithful": true,
       "faith_agree": true,
-      "judge_relevance": 3.0,
+      "judge_relevance": 5.0,
       "my_relevance": 5.0,
-      "rel_diff": -2.0,
-      "rel_pm1": false
+      "rel_diff": 0.0,
+      "rel_pm1": true
     },
     {
       "id": "M001",
-      "judge_faithful": false,
+      "judge_faithful": true,
       "my_faithful": true,
-      "faith_agree": false,
-      "judge_relevance": 3.0,
-      "my_relevance": 4.0,
-      "rel_diff": -1.0,
+      "faith_agree": true,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
       "rel_pm1": true
     },
     {
@@ -208,11 +211,10 @@
       "judge_faithful": true,
       "my_faithful": true,
       "faith_agree": true,
-      "judge_relevance": 3.0,
-      "my_relevance": 4.0,
-      "rel_diff": -1.0,
+      "judge_relevance": 5.0,
+      "my_relevance": 5.0,
+      "rel_diff": 0.0,
       "rel_pm1": true
     }
-  ],
-  "meta_note": "judge_version / judge_model 于 2026-11-14 补录：原脚本从 results 行的 judge_version/judge_model 读取，但当时该批 results 未写入这两个字段，导致为空。取值依据：eval/run_eval.py 的 JUDGE_VERSION=j5，且 config/rag.yml 当时为 deepseek-chat。"
+  ]
 }

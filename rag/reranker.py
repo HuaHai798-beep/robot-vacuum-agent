@@ -92,8 +92,20 @@ def api_rerank_search(vector_store, query: str, topk: int = 3, candidates: int =
         if 0 <= idx < len(docs):
             out.append(docs[idx])
 
+    # v2.1：抓 / 估算重排 tokens（用于成本入账）
+    usage = getattr(resp, "usage", None)
+    total_tokens, estimated = None, False
+    try:
+        total_tokens = int(getattr(usage, "total_tokens", 0)) or None
+    except Exception:
+        total_tokens = None
+    if not total_tokens:
+        chars = len(query or "") + sum(len(d.page_content or "") for d in docs)
+        total_tokens, estimated = max(1, round(chars / 1.5)), True
+
     _mark(trace, rerank_method="api", rerank_calls=1, rerank_fallback=False,
           rerank_latency=round(time.perf_counter() - t0, 4),
+          rerank_tokens=total_tokens, rerank_tokens_estimated=estimated,
           rerank_scores=[round(float(getattr(x, "relevance_score", 0)), 4) for x in results[:topk]])
     return out or docs[:topk]
 

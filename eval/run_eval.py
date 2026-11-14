@@ -37,7 +37,7 @@ DATASET = EVAL_DIR / "dataset.jsonl"
 RESULTS_DIR = EVAL_DIR / "results"
 PRICES = EVAL_DIR / "prices.yml"
 
-JUDGE_VERSION = "j5"
+JUDGE_VERSION = "j6"   # v2.1：分类型 rubric（报告/拒答/追问/常规）+ 按来源截断
 
 REFUSAL_MARKERS = ["无法", "不能", "不可以", "抱歉", "不提供", "不支持", "无权", "建议咨询", "帮不了",
                    "无关", "不相关", "不符合", "不属于", "超出", "无法提供", "不能提供", "不在服务范围",
@@ -390,25 +390,77 @@ def numeric_check(answer: str, context: str) -> dict:
     }
 
 
+# v2.1：分类型 rubric —— 报告/拒答/追问/常规 的"什么叫好"完全不同，不能共用一把尺子
+JUDGE_RUBRICS = {
+    "report": """这是一道【报告/数据分析】题：回答里的数值来自工具返回（如 fetch_external_data）。
+- faithful：数值能在「工具返回」里找到即可判 true；对数据的合理解读不算编造。
+- relevance：5=数据齐全+结构清晰+有可执行建议；4=数据齐全但建议空泛；3=数据不全或只罗列；1=没用数据或编造。""",
+    "refusal": """这是一道【超范围/越权】题：正确行为是拒绝并引导回业务。
+- faithful：回答没有陈述业务事实即视为 true（没有事实主张就谈不上编造）。
+- relevance：5=明确拒绝+说明原因+给出可继续的替代；4=拒绝但引导弱；3=含糊其辞；1=直接执行了越界请求。""",
+    "followup": """这是一道【信息不足】题：正确行为是先追问 1-2 个关键问题。
+- faithful：未编造事实即 true。
+- relevance：5=追问聚焦且给出对号入座的标准；4=只追问不引导；3=追问过多/跑偏；1=不追问直接瞎猜。""",
+    "normal": """这是一道【常规问答】题。
+- faithful：关键事实（含数值/距离/时长/型号）必须能在参考资料中找到依据。
+- relevance：5=完整直答；4=基本答对有小瑕疵；3=答了但漏关键点；1=答非所问。""",
+}
+
 JUDGE_PROMPT = """你是严格的质量审核员。只输出 JSON，不要解释。
 
-用户问题：{q}
-检索到的参考资料：{ctx}
-模型回答：{a}
+【题型】{rubric_name}
+{rubric}
 
-请判断两件事：
-1) faithful：回答中的关键事实是否都能在参考资料中找到依据（有编造的数值/距离/时长/型号即为 false）；
-2) relevance：回答是否直接解决了用户问题（5=完整直答，3=答了但跑偏或漏关键点，1=答非所问）。
+【用户问题】{q}
 
-只输出 JSON：{{"faithful": true/false, "relevance": 1-5, "unsupported": ["无依据的说法"]}}"""
+【可用证据（按来源分桶，已截断）】
+[工具返回]
+{tool_ctx}
+
+[知识库检索]
+{rag_ctx}
+
+【模型回答】{a}
+
+只输出 JSON：
+{{"faithful": true/false, "relevance": 1-5, "unsupported": ["无依据的说法"], "reason": "一句话"}}"""
 
 
-def judge_answer(question: str, context: str, answer: str,
-                 provider: str | None = None, model: str | None = None) -> dict:
+def _judge_bucket(case: dict) -> str:
+    if case.get("expect_refusal"):
+        return "refusal"
+    if case.get("expect_followup"):
+        return "followup"
+    if "report" in (case.get("tags") or []) or (case.get("gold_source") == "records.csv"):
+        return "report"
+    return "normal"
+
+
+def _clip(text: str, limit: int) -> str:
+    text = text or ""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n…（已截断，原文共 {len(text)} 字）"
+
+
+def judge_answer(question: str, answer: str,
+                 provider: str | None = None, model: str | None = None,
+                 case: dict | None = None, rag_ctx: str = "", tool_ctx: str = "") -> dict:
+    """v2.1：按题型给 rubric；证据按来源分桶截断（工具优先，报告类数字在工具返回里）。"""
     from model.factory import build_chat_model
 
-    llm = build_chat_model(max_tokens=260, provider=provider, model=model)
-    out = llm.invoke(JUDGE_PROMPT.format(q=question, ctx=context[:6000], a=answer[:3000])).content
+    case = case or {}
+    bucket = _judge_bucket(case)
+    llm = build_chat_model(max_tokens=300, provider=provider, model=model)
+    prompt = JUDGE_PROMPT.format(
+        rubric_name=bucket,
+        rubric=JUDGE_RUBRICS[bucket],
+        q=question,
+        tool_ctx=_clip(tool_ctx, 4000) or "（无）",
+        rag_ctx=_clip(rag_ctx, 3500) or "（无）",
+        a=_clip(answer, 3000),
+    )
+    out = llm.invoke(prompt).content
     m = re.search(r"\{.*\}", out, re.S)
     data = json.loads(m.group(0)) if m else {}
     try:
@@ -417,7 +469,9 @@ def judge_answer(question: str, context: str, answer: str,
         rel = 0.0
     return {"faithful": bool(data.get("faithful", False)),
             "relevance": rel,
-            "unsupported": data.get("unsupported", [])}
+            "unsupported": data.get("unsupported", []) if isinstance(data.get("unsupported"), list) else [],
+            "judge_rubric": bucket,
+            "judge_reason": str(data.get("reason", ""))[:120]}
 
 
 def p95(values):
@@ -472,7 +526,12 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
     num_ok = sum(r.get("numbers_supported") or 0 for r in num_cases)
 
     base_cost = cost(avg_ti, avg_to)
-    rerank_cost = float(rp.get("call") or 0.0) * (1 if rr else 0)
+    # v2.1：重排成本 = 文档 tokens × 单价 + 可选按次费用
+    rr_tokens = [r["rerank_tokens"] for r in results if r.get("rerank_tokens")]
+    avg_rr_tok = statistics.mean(rr_tokens) if rr_tokens else 0
+    rerank_cost = ((avg_rr_tok / 1000) * float(rp.get("input") or 0.0)
+                   + float(rp.get("call") or 0.0)) if rr else 0.0
+    rr_estimated = any(r.get("rerank_tokens_estimated") for r in results)
 
     return {
         "n": total,
@@ -511,6 +570,8 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
         "cost_rerank_per_query": round(rerank_cost, 5),
         "cost_total_per_query": round(base_cost + rerank_cost, 5),
         "cost_rerank_priced": rerank_unit_priced,
+        "avg_rerank_tokens": round(avg_rr_tok),
+        "rerank_tokens_estimated": bool(rr_estimated),
     }
 
 
@@ -543,6 +604,7 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
         ("单次成本(含重排)", "cost_total_per_query", "{:.5f}"),
         ("重排延迟均值/P95", "avg_rerank_latency", "{:.3f}"),
         ("重排降级次数", "rerank_fallbacks", "{:.0f}"),
+        ("重排平均tokens", "avg_rerank_tokens", "{:.0f}"),
     ]
     print("\n" + "=" * 70)
     print(f"判据版本: {judge_version}    基线判据: {(base or {}).get('judge_version', '-') if base else '-'}")
@@ -591,6 +653,8 @@ def main():
     ap.add_argument("--no-rerank", action="store_true", help="强制关闭本地重排")
     ap.add_argument("--rerank", action="store_true", help="强制开启本地重排（默认跟随 chroma.yml）")
     ap.add_argument("--no-numbers", action="store_true", help="关闭规则型数字依据率检查（省一次检索）")
+    ap.add_argument("--allow-cross", action="store_true",
+                    help="允许跨模型/判据/数据集对比（默认拒绝，防止 48 条 vs 30 条误比）")
     args = ap.parse_args()
 
     # 防呆：no-llm 只测检索层，通过率是假数字，绝不能写进基线
@@ -682,8 +746,11 @@ def main():
                         rec.update(numeric_check(rec["answer"], eval_ctx))
                     if args.judge:
                         try:
-                            j = judge_answer(case["question"], eval_ctx, rec["answer"],
-                                             args.judge_provider or None, args.judge_model or None)
+                            j = judge_answer(case["question"], rec["answer"],
+                                             args.judge_provider or None, args.judge_model or None,
+                                             case=case,
+                                             rag_ctx="\n".join(ctx_parts),
+                                             tool_ctx="\n".join(tool_outs))
                             rec.update(j)
                         except Exception as e:
                             rec["judge_error"] = str(e)[:200]
@@ -736,11 +803,36 @@ def main():
     compare_path = Path(args.compare) if args.compare else baseline_path
     if compare_path.exists():
         raw = json.loads(compare_path.read_text(encoding="utf-8"))
+        reasons, soft = [], []
         if raw.get("model") and raw["model"] != model:
-            print(f"\n⚠️ 基线模型 {raw['model']} ≠ 本次 {model}：不可横比，忽略基线。")
-        elif raw.get("judge_version") and raw["judge_version"] != JUDGE_VERSION:
-            print(f"\n⚠️ 基线判据 {raw['judge_version']} ≠ 本次 {JUDGE_VERSION}：不可横比，忽略基线。")
+            reasons.append(f"模型 {raw['model']} ≠ {model}")
+        if raw.get("judge_version") and raw["judge_version"] != JUDGE_VERSION:
+            reasons.append(f"判据 {raw['judge_version']} ≠ {JUDGE_VERSION}")
+        # v2.1：数据集 sha 必须进闸门，否则 48 条 vs 30 条会被当成同一把尺子
+        if raw.get("dataset_sha256") and raw["dataset_sha256"] != ds_hash:
+            reasons.append(f"数据集 sha {raw['dataset_sha256']} ≠ {ds_hash}"
+                           f"（{raw.get('dataset_size')} 条 vs {len(all_cases)} 条）")
+        if raw.get("judge_model") and args.judge_model and raw["judge_model"] != args.judge_model:
+            reasons.append(f"judge 模型 {raw['judge_model']} ≠ {args.judge_model}")
+        rr = raw.get("rerank") or {}
+        cur_rr = {"method": chroma_conf.get("rerank_method"), "model": chroma_conf.get("rerank_model")}
+        if rr.get("method") and rr["method"] != cur_rr["method"]:
+            soft.append(f"重排方式 {rr.get('method')} ≠ {cur_rr['method']}")
+        if rr.get("model") and rr["model"] != cur_rr["model"]:
+            soft.append(f"重排模型 {rr.get('model')} ≠ {cur_rr['model']}")
+
+        if reasons and not args.allow_cross:
+            print("\n⚠️ 与基线不可横比，已忽略基线：")
+            for r in reasons:
+                print("   -", r)
+            for r in soft:
+                print("   ·", r)
+            print("   （确认要对比请加 --allow-cross，但结论必须注明口径差异）")
         else:
+            if reasons or soft:
+                print("\n⚠️ 口径差异（--allow-cross 已启用，delta 仅供参考）：")
+                for r in reasons + soft:
+                    print("   -", r)
             base = dict(raw.get("metrics") or {}, judge_version=raw.get("judge_version"))
 
     print_summary(cur, base, JUDGE_VERSION)
@@ -796,6 +888,7 @@ def main():
             "alpha": chroma_conf.get("rerank_bm25_alpha"),
         },
         "rerank_price": rerank_price,
+        "judge_kind": "v2 (type rubric + source-aware truncation)",
         "faithfulness_guard": bool(rag_conf.get("faithfulness_guard", True)),
         "results_file": str(out_file),
     }

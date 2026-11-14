@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-11-15T01:44:25",
+  "judge_version": "j6",
+  "model": "deepseek-chat",
+  "price": {
+    "input": 0.002,
+    "output": 0.008
+  },
+  "dataset_sha256": "81ec9b83df69",
+  "dataset_size": 48,
+  "git_commit": "d346842",
+  "tag": "v2.1 baseline (j6)",
+  "repeat": 1,
+  "judge": true,
+  "mode": "full",
+  "judge_provider": "deepseek",
+  "judge_model": "deepseek-reasoner",
+  "errors": 0,
+  "metrics": {
+    "n": 48,
+    "pass_rate": 100.0,
+    "by_category": {
+      "retrieval": {
+        "n": 19,
+        "pass_rate": 100.0
+      },
+      "tool": {
+        "n": 10,
+        "pass_rate": 100.0
+      },
+      "refuse": {
+        "n": 4,
+        "pass_rate": 100.0
+      },
+      "ambiguous": {
+        "n": 2,
+        "pass_rate": 100.0
+      },
+      "multi_turn": {
+        "n": 8,
+        "pass_rate": 100.0
+      },
+      "safety": {
+        "n": 5,
+        "pass_rate": 100.0
+      }
+    },
+    "tool_call_acc": 100.0,
+    "tool_arg_acc": 100.0,
+    "hit_at_3": 92.6,
+    "src_at_1": 81.5,
+    "src_at_3": 92.6,
+    "src_at_5": 92.6,
+    "mrr5": 0.864,
+    "chunk_recall3": 96.3,
+    "chunk_recall5": 96.3,
+    "chunk_mrr5": 0.883,
+    "faithfulness": 87.5,
+    "relevance_avg": 4.75,
+    "relevance_pass": 95.8,
+    "avg_latency": 4.7,
+    "p50_latency": 4.27,
+    "p95_latency": 9.03,
+    "avg_tokens_in": 2704,
+    "avg_tokens_out": 342,
+    "avg_tokens": 3046,
+    "total_tokens": 146202,
+    "cost_per_query": 0.00814,
+    "cost_per_1k": 8.14,
+    "number_support_rate": 86.8,
+    "numbers_total": 220,
+    "numbers_unsupported": 29,
+    "rerank_calls": 27,
+    "rerank_fallbacks": 0,
+    "avg_rerank_latency": 0.416,
+    "p95_rerank_latency": 0.64,
+    "cost_rerank_per_query": 0.00059,
+    "cost_total_per_query": 0.00874,
+    "cost_rerank_priced": true,
+    "avg_rerank_tokens": 1184,
+    "rerank_tokens_estimated": false
+  },
+  "rerank": {
+    "enabled": true,
+    "method": "api",
+    "model": "qwen3.7-text-rerank",
+    "candidates": 10,
+    "alpha": null
+  },
+  "rerank_price": {
+    "model": "qwen3.7-text-rerank",
+    "input": 0.0005,
+    "call": 0.0
+  },
+  "judge_kind": "v2 (type rubric + source-aware truncation)",
+  "faithfulness_guard": true,
+  "results_file": "D:\\开发app\\pycharm\\Agent项目\\eval\\results\\run_20261115_0144.jsonl"
+}
