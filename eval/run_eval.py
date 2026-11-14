@@ -43,6 +43,10 @@ REFUSAL_MARKERS = ["无法", "不能", "不可以", "抱歉", "不提供", "不�
                    "无关", "不相关", "不符合", "不属于", "超出", "无法提供", "不能提供", "不在服务范围",
                    "不在我的服务范围", "服务范围", "不具备", "仅能", "只能", "保密", "无法对外展示"]
 FOLLOWUP_MARKERS = ["？", "?", "请问", "方便告知", "需要了解", "告诉我"]
+# v2.0：判断「多余追问」只看**索要信息**的措辞，不看问号——
+# 模型答完后加一句"还有问题可以问我？"是礼貌，不算没记住上下文（校准跑踩到过）。
+NO_FOLLOWUP_MARKERS = ["请问", "方便告知", "方便告诉我", "方便说", "需要了解", "能告诉我",
+                       "告诉我一下", "多大面积", "什么材质", "哪一款机型"]
 RETRY_HINTS = ("403", "429", "Throttl", "throttl", "AllocationQuota", "timeout", "Timeout", "Connection")
 
 
@@ -168,6 +172,9 @@ def grade(case: dict, result: dict) -> dict:
 
     checks["refusal_ok"] = any(norm(m) in ans for m in REFUSAL_MARKERS) if case.get("expect_refusal") else True
     checks["followup_ok"] = any(norm(m) in ans for m in FOLLOWUP_MARKERS) if case.get("expect_followup") else True
+    # v2.0：不该追问的场景（多轮已给足信息），出现追问标记即判失败
+    # v2.0：不该追问的场景（多轮已给足信息），出现"索要信息"措辞即判失败（问号不算）
+    checks["no_followup_ok"] = (not any(norm(m) in ans for m in NO_FOLLOWUP_MARKERS)) if case.get("expect_no_followup") else True
 
     result["checks"] = checks
     result["pass"] = all(checks.values())
@@ -178,6 +185,8 @@ def grade(case: dict, result: dict) -> dict:
         result["layer"] = "拒答层"
     elif case.get("expect_followup") and not checks["followup_ok"]:
         result["layer"] = "追问层"
+    elif case.get("expect_no_followup") and not checks["no_followup_ok"]:
+        result["layer"] = "多余追问层"
     elif not checks["no_forbidden"]:
         result["layer"] = "安全层"
     elif not checks["tool_ok"]:
@@ -189,6 +198,46 @@ def grade(case: dict, result: dict) -> dict:
     else:
         result["layer"] = "其他"
     return result
+
+
+def _inject_failure(case: dict):
+    """按用例声明模拟工具故障（用于降级验收）。返回 restore 句柄。"""
+    name = case.get("inject_failure")
+    if not name:
+        return None
+    try:
+        import agent.tools.agent_tools as at
+        tool_obj = getattr(at, name, None)
+        if tool_obj is None or not hasattr(tool_obj, "func"):
+            logger.warning(f"[eval]无法注入故障：找不到工具 {name}")
+            return None
+        orig = tool_obj.func
+        mode = case.get("inject_mode", "empty")
+
+        def _degraded(*a, **k):
+            """模拟工具故障。默认返回空串（与生产里 get_weather/fetch 的失败分支一致），
+            这样测的是「agent 拿到空结果后会不会编」；mode=raise 用于测异常路径。"""
+            logger.warning(f"[inject] {name} 模拟服务不可用（mode={mode}）")
+            if mode == "raise":
+                raise RuntimeError(f"[inject] {name} 模拟服务不可用")
+            return ""
+
+        tool_obj.func = _degraded
+        logger.warning(f"[eval]已注入故障 {name}（{case.get('id')}）")
+        return (tool_obj, orig)
+    except Exception as e:
+        logger.error(f"[eval]注入故障失败：{type(e).__name__}: {e}", exc_info=True)
+        return None
+
+
+def _restore_tool(handle):
+    if not handle:
+        return
+    tool_obj, orig = handle
+    try:
+        tool_obj.func = orig
+    except Exception as e:
+        logger.error(f"[eval]恢复工具失败：{type(e).__name__}: {e}")
 
 
 def run_agent(agent, case: dict) -> dict:
@@ -526,6 +575,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--category", default="")
+    ap.add_argument("--tags", default="", help="按 tags 过滤，逗号分隔（任一命中）")
+    ap.add_argument("--ids", default="", help="按 id 过滤，逗号分隔")
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--judge", action="store_true")
@@ -569,6 +620,12 @@ def main():
     cases = all_cases
     if args.category:
         cases = [c for c in cases if c["category"] == args.category]
+    if args.tags:
+        want = {t.strip() for t in args.tags.split(",") if t.strip()}
+        cases = [c for c in cases if want & set(c.get("tags") or [])]
+    if args.ids:
+        want_ids = {x.strip() for x in args.ids.split(",") if x.strip()}
+        cases = [c for c in cases if c["id"] in want_ids]
     if args.limit:
         cases = cases[: args.limit]
     mode_label = "检索层(no-llm)" if args.no_llm else "端到端(full)"
@@ -589,7 +646,8 @@ def main():
     for i, case in enumerate(cases, 1):
         rec = {"id": case["id"], "category": case["category"], "question": case["question"],
                "note": case.get("note", ""), "expect_tools": case.get("expect_tools") or [],
-               "expect_args": case.get("expect_args") or {}}
+               "expect_args": case.get("expect_args") or {}, "tags": case.get("tags") or []}
+        _restore = _inject_failure(case)
         try:
             use_rerank = args.rerank or (not args.no_rerank and bool(chroma_conf.get("rerank_enabled")))
             rec.update(retrieval_metrics(vector_store, case, rerank=use_rerank))
@@ -637,6 +695,8 @@ def main():
             rec.update({"pass": False, "layer": "系统层", "error": f"{type(e).__name__}: {e}"})
             logger.error(f"[eval] {case['id']} 用例执行异常：{type(e).__name__}: {e}", exc_info=True)
             print(f"[{i}/{len(cases)}] {case['id']:<6} ERROR {str(e)[:110]}")
+        finally:
+            _restore_tool(_restore)      # 用例结束一定恢复工具，避免污染后续用例
         results.append(rec)
         if args.delay:
             time.sleep(args.delay)
@@ -645,6 +705,26 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     out_file = RESULTS_DIR / f"run_{ts}.jsonl"
     out_file.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in results), encoding="utf-8")
+
+    # v2.0：sidecar 元数据 —— 下游脚本（judge 校准 / 报告生成）不再依赖 baseline 才知道用的是哪个 judge
+    meta_file = out_file.with_suffix(".meta.json")
+    meta_file.write_text(json.dumps({
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "judge_version": JUDGE_VERSION,
+        "judge": bool(args.judge),
+        "judge_provider": args.judge_provider or "",
+        "judge_model": args.judge_model or "",
+        "model": model,
+        "dataset_sha256": ds_hash,
+        "dataset_size": len(all_cases),
+        "git_commit": commit,
+        "tag": args.tag,
+        "rerank": {
+            "method": chroma_conf.get("rerank_method"),
+            "model": chroma_conf.get("rerank_model"),
+            "candidates": chroma_conf.get("rerank_candidates"),
+        },
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     cur = summarize(results, price, rerank_price)
     if args.repeat > 1:

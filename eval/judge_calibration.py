@@ -32,12 +32,47 @@ def cohen_kappa(pairs: list[tuple[int, int]]) -> float:
     return round((po - pe) / (1 - pe), 3) if pe != 1 else 1.0
 
 
+def resolve_meta(results_path: Path, baseline: str, cli_v: str, cli_m: str) -> dict:
+    """追溯 judge 元数据：sidecar → baseline → results 行 → CLI 参数（v2.0 修复）。
+
+    之前只从 results 行取，而 results 行并不携带这些字段 → 报告里永远是空字符串。
+    """
+    meta = {}
+    side = results_path.with_suffix(".meta.json")
+    if side.exists():
+        try:
+            meta.update({k: v for k, v in json.loads(side.read_text(encoding="utf-8")).items()
+                         if k in {"judge_version", "judge_model", "judge_provider", "model"}})
+        except Exception as e:
+            print(f"[warn] sidecar 解析失败：{type(e).__name__}: {e}")
+    if baseline and Path(baseline).exists() and not meta.get("judge_version"):
+        try:
+            b = json.loads(Path(baseline).read_text(encoding="utf-8"))
+            meta.setdefault("judge_version", b.get("judge_version", ""))
+            meta.setdefault("judge_model", b.get("judge_model", ""))
+            meta.setdefault("model", b.get("model", ""))
+        except Exception as e:
+            print(f"[warn] baseline 解析失败：{type(e).__name__}: {e}")
+    if cli_v:
+        meta["judge_version"] = cli_v
+    if cli_m:
+        meta["judge_model"] = cli_m
+    if not meta.get("judge_version"):
+        print("[warn] 未能确定 judge_version（sidecar/baseline/CLI 都没有），报告里将留空")
+    return meta
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", required=True, help="跑批明细 jsonl")
     ap.add_argument("--labels", default=str(LABELS))
     ap.add_argument("--report", default=str(REPORT))
+    ap.add_argument("--baseline", default="", help="用于兜底读 judge 元数据的基线文件")
+    ap.add_argument("--judge-version", default="", help="手工指定判据版本（最终兜底）")
+    ap.add_argument("--judge-model", default="", help="手工指定评审模型（最终兜底）")
     args = ap.parse_args()
+
+    meta = resolve_meta(Path(args.results), args.baseline, args.judge_version, args.judge_model)
 
     labels = json.loads(Path(args.labels).read_text(encoding="utf-8"))["items"]
     results = {}
@@ -76,7 +111,7 @@ def main():
     kappa = cohen_kappa(faith_pairs)
 
     print("=" * 78)
-    print(f"人工标注 {len(labels)} 条 | 可比对 {len(rel)} 条 | judge 版本: {results[labels[0]['id']].get('judge_version', '?')}")
+    print(f"人工标注 {len(labels)} 条 | 可比对 {len(rel)} 条 | judge: {meta.get('judge_model') or '?'} / {meta.get('judge_version') or '?'}")
     print("-" * 78)
     print(f"{'id':<6}{'judge忠实':>10}{'人工忠实':>10}{'一致':>6}{'judge相关':>10}{'人工相关':>10}{'差值':>6}")
     for r in rows:
@@ -92,8 +127,11 @@ def main():
 
     payload = {
         "n_labels": len(labels), "n_compared": len(rel),
-        "judge_version": results[labels[0]["id"]].get("judge_version", ""),
-        "judge_model": results[labels[0]["id"]].get("judge_model", ""),
+        "judge_version": meta.get("judge_version", ""),
+        "judge_model": meta.get("judge_model", ""),
+        "judge_provider": meta.get("judge_provider", ""),
+        "agent_model": meta.get("model", ""),
+        "results_file": str(Path(args.results).resolve()),
         "faithfulness": {"agreement": faith_acc, "kappa": kappa},
         "relevance": {"exact": rel_exact, "within_1": rel_pm1, "mae": rel_mae},
         "items": rows,

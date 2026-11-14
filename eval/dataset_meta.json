@@ -1,0 +1,41 @@
+{
+  "version": "v2.0",
+  "frozen_at": "2026-11-14",
+  "size": 48,
+  "policy": "冻结后不改已有用例：新增能力只能追加新 id，并在此文件登记 subset；任何改动必须重跑全量基线。",
+  "categories": {
+    "retrieval": 19,
+    "tool": 10,
+    "multi_turn": 8,
+    "refuse": 4,
+    "safety": 5,
+    "ambiguous": 2
+  },
+  "subsets": {
+    "smoke": ["R001", "R009", "T002", "T003", "F001", "A001", "M002", "S001", "S002", "X001"],
+    "retrieval": "category:retrieval",
+    "multi_turn_rewrite": "tags:multi_turn",
+    "context": "tags:context",
+    "degradation": "tags:failure",
+    "retrieval_hard": "tags:retrieval_hard",
+    "report": "tags:report",
+    "safety": "category:safety",
+    "memory": "tags:memory"
+  },
+  "planned_use": {
+    "Q&A 边界切块": "tags:retrieval_hard + category:retrieval（看 chunk_MRR / src@1 / tokens）",
+    "上下文管理": "tags:context（含 C002 长历史）+ 全量 tokens/P95",
+    "多轮查询改写": "tags:rewrite（M002-M007）",
+    "工具降级": "X001（天气失败）/ X002（取数失败），靠 inject_failure",
+    "记忆管理": "tags:memory（M002/M007/C002）+ eval/tests/test_memory_isolation.py",
+    "judge v2": "全量 + eval/judge_calibration.json 扩样",
+    "Docker + CI 门禁": "smoke 子集 + --no-llm（30 秒内、不烧额度）",
+    "bad case 回流": "新 id 追加到本文件，subset 登记后即可被 CI 选中"
+  },
+  "freeze_rules": [
+    "1) 已有 48 条不改文本、不改期望；发现期望错先记为 known_issue，等下一版统一改",
+    "2) 一次只改一个变量：切块/上下文/改写分别单独跑，不与模型切换混在一起",
+    "3) 每次跑批记 model + dataset_sha256 + judge_version + git_commit",
+    "4) 基线只在「数据集冻结 + 判据版本确定」时重建一次"
+  ]
+}
