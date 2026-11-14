@@ -1,8 +1,8 @@
 {
   "n_labels": 20,
   "n_compared": 20,
-  "judge_version": "",
-  "judge_model": "",
+  "judge_version": "j5",
+  "judge_model": "deepseek-chat",
   "faithfulness": {
     "agreement": 70.0,
     "kappa": 0.0
@@ -213,5 +213,6 @@
       "rel_diff": -1.0,
       "rel_pm1": true
     }
-  ]
+  ],
+  "meta_note": "judge_version / judge_model 于 2026-11-14 补录：原脚本从 results 行的 judge_version/judge_model 读取，但当时该批 results 未写入这两个字段，导致为空。取值依据：eval/run_eval.py 的 JUDGE_VERSION=j5，且 config/rag.yml 当时为 deepseek-chat。"
 }
