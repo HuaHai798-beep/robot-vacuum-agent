@@ -1,6 +1,6 @@
 {
-  "version": "v2.0",
-  "frozen_at": "2026-11-14",
+  "version": "v2.2",
+  "frozen_at": "2026-11-15",
   "size": 48,
   "policy": "冻结后不改已有用例：新增能力只能追加新 id，并在此文件登记 subset；任何改动必须重跑全量基线。",
   "categories": {
@@ -12,7 +12,18 @@
     "ambiguous": 2
   },
   "subsets": {
-    "smoke": ["R001", "R009", "T002", "T003", "F001", "A001", "M002", "S001", "S002", "X001"],
+    "smoke": [
+      "R001",
+      "R009",
+      "T002",
+      "T003",
+      "F001",
+      "A001",
+      "M002",
+      "S001",
+      "S002",
+      "X001"
+    ],
     "retrieval": "category:retrieval",
     "multi_turn_rewrite": "tags:multi_turn",
     "context": "tags:context",
@@ -37,5 +48,8 @@
     "2) 一次只改一个变量：切块/上下文/改写分别单独跑，不与模型切换混在一起",
     "3) 每次跑批记 model + dataset_sha256 + judge_version + git_commit",
     "4) 基线只在「数据集冻结 + 判据版本确定」时重建一次"
+  ],
+  "change_log": [
+    "v2.2：T003 期望放宽为天气/气温/湿度同义集合（原期望「天气」二字过窄，属判据修正，非能力变化）；数据集 sha 因此变化"
   ]
 }

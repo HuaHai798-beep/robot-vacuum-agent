@@ -12,6 +12,7 @@ from utils.config_handler import chroma_conf, rag_conf
 from utils.file_handler import pdf_loader, txt_loader, listdir_with_allowed_type, get_file_md5_hex
 from utils.logger_handler import logger
 from utils.path_tool import get_abs_path
+from rag.qa_splitter import split_documents_qa
 
 
 class VectorStoreService:
@@ -67,6 +68,10 @@ class VectorStoreService:
             "chunk_overlap": chroma_conf["chunk_overlap"],
             "separators": chroma_conf["separators"],
             "embedding_model": rag_conf.get("embedding_model_name", ""),
+            # v2.2：切块策略也参与指纹 —— 改 qa_split 必须触发重建，否则库还是老分块
+            "qa_split": bool(chroma_conf.get("qa_split", True)),
+            "qa_max_chars": int(chroma_conf.get("qa_max_chars", 380)),
+            "qa_min_chars": int(chroma_conf.get("qa_min_chars", 80)),
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         return hashlib.md5(raw).hexdigest()[:8]
@@ -112,6 +117,17 @@ class VectorStoreService:
         self.vector_store = Chroma(**self._chroma_kwargs)
         self._reset_md5_store()
         logger.warning("[重建知识库]已清空向量库与 md5 记录，开始全量重建")
+
+    # ----------------------------- 切块 -----------------------------
+    def _split_documents(self, documents: list[Document]) -> list[Document]:
+        """v2.2：优先按「问句+答句」成块；非问答文档自动退回普通切分。"""
+        if bool(chroma_conf.get("qa_split", True)):
+            return split_documents_qa(
+                documents,
+                qa_max_chars=int(chroma_conf.get("qa_max_chars", 380)),
+                min_chars=int(chroma_conf.get("qa_min_chars", 80)),
+            )
+        return self.spliter.split_documents(documents)
 
     # ----------------------------- 加载 -----------------------------
     def load_document(self, rebuild: bool = False):
@@ -165,7 +181,7 @@ class VectorStoreService:
                     logger.warning(f"[加载知识库]{path}内没有有效文本内容，跳过")
                     continue
 
-                split_document: list[Document] = self.spliter.split_documents(documents)
+                split_document: list[Document] = self._split_documents(documents)
                 if not split_document:
                     logger.warning(f"[加载知识库]{path}分片后没有有效文本内容，跳过")
                     continue

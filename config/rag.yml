@@ -4,3 +4,6 @@ embedding_model_name: text-embedding-v4
 
 # 忠实度后处理（v1.9）：删掉回答里「资料未提及」的数字事实（见 rag/faithfulness_guard.py）
 faithfulness_guard: true
+
+# 多轮查询改写（v2.2）：短句/指代式追问先改写成独立 query（见 rag/query_rewriter.py）
+query_rewrite: true

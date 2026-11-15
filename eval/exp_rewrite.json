@@ -1,0 +1,195 @@
+{
+  "n_cases": 8,
+  "n_rewrite_changed": 7,
+  "avg_rewrite_ms": 596,
+  "chunk_recall3": {
+    "base": 87.5,
+    "new": 100
+  },
+  "chunk_mrr5": {
+    "base": 0.8125,
+    "new": 0.9375
+  },
+  "src_at3": {
+    "base": 87.5,
+    "new": 100
+  },
+  "items": [
+    {
+      "id": "M001",
+      "base_query": "我家120平，还养了猫 木地板 那选哪个型号？",
+      "new_query": "120平养猫木地板选哪个型号",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 1094,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "M002",
+      "base_query": "我家120平，木地板，养了猫 推荐哪个型号",
+      "new_query": "120平木地板养猫推荐哪个型号",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 448,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "M003",
+      "base_query": "滤网多久换一次？ 那滚刷呢？",
+      "new_query": "滚刷多久更换一次？",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 671,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "M004",
+      "base_query": "扫地机器人能扫瓜子壳吗？ 那烟头呢？",
+      "new_query": "扫地机器人能扫烟头吗？",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 622,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 2,
+        "chunk_mrr5": 0.5,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "M005",
+      "base_query": "我家90-140平 那续航要多长？",
+      "new_query": "90-140平户型扫地机器人续航要多长",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 688,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "M006",
+      "base_query": "家里有宠物，掉发很多 滚刷怎么选？",
+      "new_query": "宠物家庭滚刷怎么选？",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 626,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 2,
+        "chunk_mrr5": 0.5,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "M007",
+      "base_query": "我家60平 木地板 推荐一个",
+      "new_query": "60平木地板推荐哪款",
+      "rewrite_used": true,
+      "rewrite_changed": true,
+      "rewrite_ms": 619,
+      "base": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    },
+    {
+      "id": "C002",
+      "base_query": "我家120平，木地板 滤网多久换？ 拖布怎么洗？ 耗材多久换一次？ 怎么降低噪音？ 长期不用怎么存？ 电池多久充一次？ ",
+      "new_query": "按我最开始说的户型推荐一个",
+      "rewrite_used": false,
+      "rewrite_changed": false,
+      "rewrite_ms": 0,
+      "base": {
+        "chunk_hit3": false,
+        "chunk_rank": null,
+        "chunk_mrr5": 0.0,
+        "src_at3": false,
+        "hit3": false
+      },
+      "new": {
+        "chunk_hit3": true,
+        "chunk_rank": 1,
+        "chunk_mrr5": 1.0,
+        "src_at3": true,
+        "hit3": true
+      }
+    }
+  ]
+}

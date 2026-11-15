@@ -9,6 +9,11 @@ chunk_size: 200
 chunk_overlap: 20
 separators: ["\n\n", "\n", ".", "!", "?", "。", "！", "？", " ", ""]
 
+# Q&A 边界切块（v2.2）：问句+答句成块；改这几个参数会改变切块指纹，需 --rebuild
+qa_split: true
+qa_max_chars: 380       # 单个 Q&A 块上限（超长答句按句拆，且每段带问句前缀）
+qa_min_chars: 80       # 非问答段落的最小合并长度（避免碎片块）
+
 # 检索重排
 rerank_enabled: true
 rerank_candidates: 10

@@ -49,6 +49,16 @@ def log_before_model(
     except Exception as e:
         logger.warning(f"[log_before_model]读取最后一条消息失败（不影响主流程）：{type(e).__name__}: {e}")
 
+    # v2.2：把最近几轮 user/assistant 文本放进缓冲，供 RAG 工具做「多轮查询改写」
+    try:
+        from utils.context_buffer import set_recent_turns
+        turns = [str(m.content) for m in state["messages"]
+                 if getattr(m, "type", "") in {"human", "ai"} and getattr(m, "content", "")]
+        set_recent_turns(turns)
+        logger.debug(f"[context_buffer]最近轮次 {len(turns)} 条（保留最后 8 条）")
+    except Exception as e:
+        logger.warning(f"[context_buffer]写入最近轮次失败（不影响主流程）：{type(e).__name__}: {e}")
+
     return None
 
 @dynamic_prompt                        # 每一次在生成提示词之前，调用此函数

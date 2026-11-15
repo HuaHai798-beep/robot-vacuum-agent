@@ -47,6 +47,15 @@ class RagSummarizeService(object):
 
     # 假设这是RagSummarizeService类下的方法
     def rag_summarize(self, query: str) -> str:
+        # 0. 多轮查询改写（v2.2）：短句/指代式追问 → 补全成独立可检索 query
+        original_query, rewrite_used, rewrite_changed = query, False, False
+        try:
+            from rag.query_rewriter import rewrite_query
+            from utils.context_buffer import get_recent_turns
+            query, rewrite_used, rewrite_changed = rewrite_query(query, get_recent_turns())
+        except Exception as e:
+            logger.warning(f"[rag]查询改写失败，使用原 query：{type(e).__name__}: {e}")
+
         # 1. 根据query检索相关文档
         try:
             context_docs = self.retriever_docs(query)
@@ -62,7 +71,10 @@ class RagSummarizeService(object):
             context += f"【参考资料{counter}】：参考资料：{doc.page_content} | 参考元数据：{doc.metadata}\n"
 
         # 2.1 记录模型实际看到的上下文（评测归因用）
-        RAG_TRACE.append({"query": query, "context": context, "n_docs": len(context_docs),
+        RAG_TRACE.append({"query": query, "original_query": original_query, "context": context,
+                          "n_docs": len(context_docs),
+                          "rewrite_used": rewrite_used, "rewrite_changed": rewrite_changed,
+                          "chunk_types": sorted({str((d.metadata or {}).get("chunk_type", "")) for d in context_docs}),
                           "sources": [str((d.metadata or {}).get("source", "")) for d in context_docs]})
 
         if not context.strip():

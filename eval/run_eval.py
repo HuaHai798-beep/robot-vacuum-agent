@@ -18,6 +18,7 @@
 """
 import argparse
 import hashlib
+import os
 import json
 import re
 import statistics
@@ -572,7 +573,44 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
         "cost_rerank_priced": rerank_unit_priced,
         "avg_rerank_tokens": round(avg_rr_tok),
         "rerank_tokens_estimated": bool(rr_estimated),
+        "rewrite_calls": sum(1 for r in results if r.get("rewrite_used")),
+        "rewrite_changed": sum(1 for r in results if r.get("rewrite_changed")),
+        "rewrite_rate": round(sum(1 for r in results if r.get("rewrite_changed"))
+                              / max(1, len([r for r in results if r.get("answer")])) * 100, 1),
     }
+
+
+def enforce_gate(cur: dict, gate_path: str, ds_hash: str) -> bool:
+    """发布闸门：通过率不降、tokens_in 涨幅≤10%、忠实度跌幅≤2pp。"""
+    p = Path(gate_path)
+    if not p.exists():
+        print(f"\n⚠️ 闸门文件不存在：{gate_path}（跳过闸门）")
+        return True
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    gm = raw.get("metrics") or {}
+    checks = []
+    if raw.get("dataset_sha256") and raw["dataset_sha256"] != ds_hash:
+        checks.append(("数据集", False, f"sha {raw['dataset_sha256']} ≠ {ds_hash}（闸门基线不是同一数据集）"))
+    else:
+        checks.append(("数据集", True, "sha 一致"))
+    if gm.get("pass_rate") is not None and cur.get("pass_rate") is not None:
+        checks.append(("通过率不降", cur["pass_rate"] >= gm["pass_rate"],
+                       f"{cur['pass_rate']}% vs 基线 {gm['pass_rate']}%"))
+    if gm.get("avg_tokens_in") and cur.get("avg_tokens_in"):
+        limit = gm["avg_tokens_in"] * 1.10
+        checks.append(("tokens_in ≤ +10%", cur["avg_tokens_in"] <= limit,
+                       f"{cur['avg_tokens_in']:.0f} vs 基线 {gm['avg_tokens_in']:.0f}（上限 {limit:.0f}）"))
+    if gm.get("faithfulness") is not None and cur.get("faithfulness") is not None:
+        checks.append(("忠实度 ≥ 基线-2pp", cur["faithfulness"] >= gm["faithfulness"] - 2.0,
+                       f"{cur['faithfulness']}% vs 基线 {gm['faithfulness']}%"))
+    ok_all = all(ok for _, ok, _ in checks)
+    print("\n" + "=" * 74)
+    print("发布闸门（不许退化）")
+    for name, ok, detail in checks:
+        print(f"  {'✓' if ok else '✗'} {name}：{detail}")
+    print("=" * 74)
+    print("✓ 闸门通过，可以发版" if ok_all else "✗ 闸门未通过：本版不应发布（先修回归或明确降级原因）")
+    return ok_all
 
 
 def print_summary(cur: dict, base: dict | None, judge_version: str):
@@ -605,6 +643,8 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
         ("重排延迟均值/P95", "avg_rerank_latency", "{:.3f}"),
         ("重排降级次数", "rerank_fallbacks", "{:.0f}"),
         ("重排平均tokens", "avg_rerank_tokens", "{:.0f}"),
+        ("查询改写(调用/变更)", "rewrite_calls", "{:.0f}"),
+        ("改写变更率", "rewrite_rate", "{:.1f}%"),
     ]
     print("\n" + "=" * 70)
     print(f"判据版本: {judge_version}    基线判据: {(base or {}).get('judge_version', '-') if base else '-'}")
@@ -645,8 +685,8 @@ def main():
     ap.add_argument("--judge-provider", default="", help="评审模型 provider（默认同 agent）")
     ap.add_argument("--judge-model", default="", help="评审模型名（默认同 agent），用于交叉评审")
     ap.add_argument("--repeat", type=int, default=1)
-    ap.add_argument("--baseline", default=str(EVAL_DIR / "baselines" / "baseline_v21.json"),
-                    help="对比基线；默认最新基线 eval/baselines/baseline_v21.json（更早的基线都是历史快照，别拿来做对比）")
+    ap.add_argument("--baseline", default=str(EVAL_DIR / "baselines" / "baseline_v22.json"),
+                    help="对比基线；默认最新基线 eval/baselines/baseline_v22.json（更早的基线都是历史快照，别拿来做对比）")
     ap.add_argument("--compare", default="", help="用于对比的历史基线（不写回），默认同 --baseline")
     ap.add_argument("--tag", default="")
     ap.add_argument("--delay", type=float, default=0.3)
@@ -656,7 +696,14 @@ def main():
     ap.add_argument("--no-numbers", action="store_true", help="关闭规则型数字依据率检查（省一次检索）")
     ap.add_argument("--allow-cross", action="store_true",
                     help="允许跨模型/判据/数据集对比（默认拒绝，防止 48 条 vs 30 条误比）")
+    ap.add_argument("--no-rewrite", action="store_true", help="关闭多轮查询改写（A/B 对照用）")
+    ap.add_argument("--gate", default="",
+                    help="发布闸门基线：通过率不得下降、tokens_in 不得涨超 10%%、忠实度不得掉 2pp，否则 exit 3")
     args = ap.parse_args()
+
+    if args.no_rewrite:
+        os.environ["AGENT_NO_REWRITE"] = "1"
+        logger.warning("[eval] --no-rewrite 已开启：RAG 工具不会做多轮查询改写")
 
     # 防呆：no-llm 只测检索层，通过率是假数字，绝不能写进基线
     if args.no_llm and args.save_baseline:
@@ -736,6 +783,9 @@ def main():
                     trace = _rag_mod.take_rag_trace()
                     ctx_parts = [t["context"] for t in trace if t.get("context")]
                     rec["eval_ctx_docs"] = sum(int(t.get("n_docs") or 0) for t in trace)
+                    rec["rewrite_used"] = sum(1 for t in trace if t.get("rewrite_used"))
+                    rec["rewrite_changed"] = sum(1 for t in trace if t.get("rewrite_changed"))
+                    rec["chunk_types"] = sorted({ct for t in trace for ct in (t.get("chunk_types") or []) if ct})
                     tool_outs = [str(t)[:2000] for t in (rec.get("tool_outputs") or [])]
                     rec["eval_ctx_tools"] = len(tool_outs)
                     eval_ctx = "\n".join(ctx_parts + tool_outs)
@@ -844,6 +894,9 @@ def main():
             base = dict(raw.get("metrics") or {}, judge_version=raw.get("judge_version"))
 
     print_summary(cur, base, JUDGE_VERSION)
+    if args.gate and not enforce_gate(cur, args.gate, ds_hash):
+        print(f"\n明细（未写基线）: {out_file}")
+        sys.exit(3)
     if args.no_llm:
         print("\n⚠️ 当前是 no-llm 模式：只测检索层（embedding + 向量库 + rerank），"
               "工具/拒答/追问/忠实度都没有测，上面的「通过率」不可信；"
@@ -898,6 +951,8 @@ def main():
         "rerank_price": rerank_price,
         "judge_kind": "v2 (type rubric + source-aware truncation)",
         "faithfulness_guard": bool(rag_conf.get("faithfulness_guard", True)),
+        "qa_split": bool(chroma_conf.get("qa_split", True)),
+        "query_rewrite": bool(rag_conf.get("query_rewrite", True)) and not bool(args.no_rewrite),
         "results_file": str(out_file),
     }
     if args.save_baseline or not baseline_path.exists():
