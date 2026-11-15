@@ -461,7 +461,7 @@ def judge_answer(question: str, answer: str,
         a=_clip(answer, 3000),
     )
     out = llm.invoke(prompt).content
-    m = re.search(r"\{.*\}", out, re.S)
+    m = re.search(r"\{.*}", out, re.S)
     data = json.loads(m.group(0)) if m else {}
     try:
         rel = float(data.get("relevance", 0))
@@ -645,7 +645,8 @@ def main():
     ap.add_argument("--judge-provider", default="", help="评审模型 provider（默认同 agent）")
     ap.add_argument("--judge-model", default="", help="评审模型名（默认同 agent），用于交叉评审")
     ap.add_argument("--repeat", type=int, default=1)
-    ap.add_argument("--baseline", default=str(EVAL_DIR / "baseline.json"))
+    ap.add_argument("--baseline", default=str(EVAL_DIR / "baseline_v21.json"),
+                    help="对比基线；默认最新基线 baseline_v21.json（旧的 eval/baseline.json 是 26 条时代产物，已不作为默认）")
     ap.add_argument("--compare", default="", help="用于对比的历史基线（不写回），默认同 --baseline")
     ap.add_argument("--tag", default="")
     ap.add_argument("--delay", type=float, default=0.3)
@@ -804,6 +805,13 @@ def main():
     if compare_path.exists():
         raw = json.loads(compare_path.read_text(encoding="utf-8"))
         reasons, soft = [], []
+
+        # 让"缺失"可见：旧格式基线（26 条时代）没有 model/judge/dataset 字段，
+        # 以前会被当成"没差异"直接放行 → 48 条 vs 26 条静默误比。这里改成 fail-closed。
+        missing = [k for k in ("model", "judge_version", "dataset_sha256") if not raw.get(k)]
+        if missing:
+            reasons.append(f"基线缺少 {'/'.join(missing)} 字段，无法确认口径（疑似旧格式基线）")
+
         if raw.get("model") and raw["model"] != model:
             reasons.append(f"模型 {raw['model']} ≠ {model}")
         if raw.get("judge_version") and raw["judge_version"] != JUDGE_VERSION:

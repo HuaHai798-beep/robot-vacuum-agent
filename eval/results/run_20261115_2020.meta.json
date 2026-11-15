@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-11-15T20:20:43",
+  "judge_version": "j6",
+  "judge": false,
+  "judge_provider": "",
+  "judge_model": "",
+  "model": "deepseek-chat",
+  "dataset_sha256": "81ec9b83df69",
+  "dataset_size": 48,
+  "git_commit": "2f525ae",
+  "tag": "",
+  "rerank": {
+    "method": "api",
+    "model": "qwen3.7-text-rerank",
+    "candidates": 10
+  }
+}
