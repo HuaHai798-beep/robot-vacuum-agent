@@ -71,11 +71,15 @@ def check() -> list[str]:
     return errs
 
 
-if __name__ == "__main__":
+def test_dataset_selfcheck():
+    """数据集自检：id 唯一、分类合法、工具名合法、messages 结构正确、gold_source 存在"""
     errors = check()
-    if errors:
-        print("\n✗ 数据集自检失败：")
-        for e in errors:
-            print("  -", e)
-        raise SystemExit(1)
-    print("✓ 数据集自检通过")
+    assert not errors, "数据集自检失败：\n" + "\n".join(f"  - {e}" for e in errors)
+
+
+if __name__ == "__main__":
+    import sys as _sys
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parent))
+    from _harness import run_all
+    _sys.exit(run_all(globals()))

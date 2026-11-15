@@ -6,7 +6,7 @@
       这样它仍然是一份合法的基线，并留下 *_regraded.jsonl 供追溯。
 
 用法：
-    python eval/make_baseline_from_results.py eval/results/run_xxx.jsonl --baseline eval/baseline_v20.json
+    python eval/make_baseline_from_results.py eval/results/run_xxx.jsonl --baseline eval/baselines/baseline_v20.json
 """
 import argparse
 import hashlib

@@ -16,8 +16,8 @@
 | `exp_rerank_compare.py` / `.json` | 重排 A/B 实验：BM25 vs 官方语义重排，产出结论 | ✅ 实验证据 |
 | `prices.yml` | 模型单价表（元/1K tokens），用于成本核算；rerank 可按次或按 token | ✅ |
 | `tests/test_guard.py` | 忠实度后处理 + 数字依据率的**离线单测**（不联网、不花钱） | ✅ |
-| `baselines/` | 9 个历史基线快照（见下表），供追溯"某次改动的对照物" | ✅ |
-| `baseline.json` | **legacy**：CLI 默认路径，缺 `model` / `judge_version` 字段 → 与当前模型不可横比（脚本会警告并忽略） | ⚠️ 保留兼容 |
+| `baselines/` | 12 个历史基线快照（见下表），供追溯"某次改动的对照物"；CLI 默认读取 `baselines/baseline_v21.json` | ✅ |
+| `baselines/baseline.json` | **v1.1 历史快照**（26 条时代），缺 `model` / `judge_version` / `dataset_sha256` → 与当前口径不可横比（脚本会拒绝并说明原因） | ⚠️ 仅作追溯 |
 | `results/` | 每次跑批的原始明细（工具调用、答案、token、耗时、检索指标），可回放、可重打分 | 建议定期归档 |
 
 ## 当前该用哪个基线做对比？
@@ -27,14 +27,14 @@
 python eval/run_eval.py --baseline eval/baselines/baseline_v19.json
 ```
 
-`baseline.json` 只作为默认路径存在，**不要拿它做对比**（缺元数据，脚本会提示不可横比）。
+对比请显式指定当前基线：`--baseline eval/baselines/baseline_v21.json`（这是 CLI 默认值）。`baselines/baseline.json` 是 26 条时代的快照，缺元数据，脚本会**拒绝**拿它对比。
 
 ## 历史基线一览
 
 | 文件 | 版本 | 模型 | 判据 | 条数 | 通过率 | hit@3 | 关键改动 |
 |---|---|---|---|---|---|---|---|
 | `baselines/baseline_v0.json` | v1.0 | （未记录） | — | 25 | 72.0% | 87.5% | 初版：规则评分 + 25 条用例 |
-| `baseline.json` | v1.1 | （未记录） | — | 26 | 73.1% | 87.5% | 补 1 条用例 |
+| `baselines/baseline.json` | v1.1 | （未记录） | — | 26 | 73.1% | 87.5% | 补 1 条用例 |
 | `baselines/baseline_qwen_plus.json` | v1.2 | qwen-plus | — | 26 | 96.2% | 93.8% | 判据修正（破折号归一化 + 同义词或） |
 | `baselines/baseline_qwen_plus_v3.json` | v1.3 | qwen-plus | j4 | 30 | 86.7% | 93.8% | 六类指标（安全/忠实度加入）→ 数字变低但更真实 |
 | `baselines/baseline_qwen_plus_v4_regraded.json` | v1.4 | qwen-plus | j5 | 30 | 83.3% | 93.8% | 判据升级后**离线重打分** |
@@ -43,6 +43,8 @@ python eval/run_eval.py --baseline eval/baselines/baseline_v19.json
 | `baselines/baseline_deepseek_v3.json` | v1.7 | deepseek-chat | j5 | 30 | 96.7% | 93.8% | 块级指标 + BM25 实验（结论：无效） |
 | `baselines/baseline_deepseek_v4.json` | v1.8 | deepseek-chat | j5 | 30 | 100% | **100%** | 官方语义重排 `qwen3.7-text-rerank` |
 | `baselines/baseline_v19.json` | v1.9 | deepseek-chat | j5 | 30 | 96.7% | **100%** | 修 BM25 错位 bug + 成本埋点 + judge 校准 |
+| `baselines/baseline_v20.json` | v2.0 | deepseek-chat | j5 | 48 | 100% | 92.6% | 评测基座：数据集 30→48 + 子集/故障注入 |
+| `baselines/baseline_v21.json` | v2.1 | deepseek-chat | j6 | 48 | 100% | 92.6% | **当前默认基线**：judge v2 + 横比闸门 + 重排成本 |
 
 > 86.7% → 83.3% 不是变差：**判据从 j4 升到 j5 更严**，同一批答案重打分自然下降。
 
@@ -56,7 +58,7 @@ set PYTHONPATH=%CD%
 # 1) 只测检索层（不花对话额度，秒级；只看 hit@3 / 块召回 / MRR）
 python eval/run_eval.py --no-llm
 
-# 2) 端到端 + LLM judge（默认基线 = baseline.json，建议显式指定当前基线）
+# 2) 端到端 + LLM judge（默认基线 = baselines/baseline_v21.json）
 python eval/run_eval.py --judge --baseline eval/baselines/baseline_v19.json
 
 # 3) 稳定性：同一条重复跑 N 次，看结果是否一致
@@ -100,8 +102,8 @@ eval/
 ├─ exp_rerank_compare.py/.json
 ├─ prices.yml
 ├─ tests/test_guard.py
-├─ baselines/                     # 9 个历史基线
+├─ baselines/                     # 12 个历史基线
 │  ├─ baseline_v0.json … baseline_v19.json
-├─ baseline.json                  # legacy 默认路径（不可横比）
+├─ baselines/baseline.json        # v1.1 旧快照（不可横比）
 └─ results/                       # 每次跑批明细（可回放/重打分）
 ```

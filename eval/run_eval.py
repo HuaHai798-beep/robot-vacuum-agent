@@ -645,8 +645,8 @@ def main():
     ap.add_argument("--judge-provider", default="", help="评审模型 provider（默认同 agent）")
     ap.add_argument("--judge-model", default="", help="评审模型名（默认同 agent），用于交叉评审")
     ap.add_argument("--repeat", type=int, default=1)
-    ap.add_argument("--baseline", default=str(EVAL_DIR / "baseline_v21.json"),
-                    help="对比基线；默认最新基线 baseline_v21.json（旧的 eval/baseline.json 是 26 条时代产物，已不作为默认）")
+    ap.add_argument("--baseline", default=str(EVAL_DIR / "baselines" / "baseline_v21.json"),
+                    help="对比基线；默认最新基线 eval/baselines/baseline_v21.json（更早的基线都是历史快照，别拿来做对比）")
     ap.add_argument("--compare", default="", help="用于对比的历史基线（不写回），默认同 --baseline")
     ap.add_argument("--tag", default="")
     ap.add_argument("--delay", type=float, default=0.3)

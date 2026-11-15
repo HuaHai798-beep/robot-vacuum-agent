@@ -26,6 +26,7 @@ logs/*.log
 # 本地密钥（如果你以后加了 .env）
 .env
 .env.*
+!.env.example
 
 # 系统文件
 Thumbs.db
