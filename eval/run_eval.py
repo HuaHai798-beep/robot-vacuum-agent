@@ -59,8 +59,8 @@ def norm(s: str) -> str:
     return "".join(str(s).translate(table).split()).lower()
 
 
-def dataset_sha256() -> str:
-    return hashlib.sha256(DATASET.read_bytes()).hexdigest()[:12]
+def dataset_sha256(path: Path = DATASET) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
 def git_commit() -> str:
@@ -231,6 +231,33 @@ def _inject_failure(case: dict):
         return None
 
 
+def _inject_pad(case: dict):
+    """注入超长工具返回（测试上下文压缩用）。"""
+    spec = case.get("inject_pad")
+    if not spec:
+        return None
+    try:
+        import agent.tools.agent_tools as at
+        name = spec.get("tool") or "fetch_external_data"
+        chars = int(spec.get("chars") or 3000)
+        tool_obj = getattr(at, name, None)
+        if tool_obj is None or not hasattr(tool_obj, "func"):
+            logger.warning(f"[eval]无法注入长返回：找不到工具 {name}")
+            return None
+        orig = tool_obj.func
+        base = json.dumps({"records": [
+            {"month": f"2026-{m:02d}", "coverage": f"{80 + m}%", "area": f"{40 + m}㎡",
+             "consumables": "主刷剩余120天，滤网剩余20天"} for m in range(1, 13)],
+            "total": 12, "note": "12 个月统计"}, ensure_ascii=False)
+        pad = (base * (chars // max(1, len(base)) + 1))[:chars]
+        tool_obj.func = lambda *a, **k: pad
+        logger.warning(f"[eval]已注入长返回 {name}（{chars} 字，{case.get('id')}）")
+        return (tool_obj, orig)
+    except Exception as e:
+        logger.error(f"[eval]注入长返回失败：{type(e).__name__}: {e}", exc_info=True)
+        return None
+
+
 def _restore_tool(handle):
     if not handle:
         return
@@ -260,7 +287,16 @@ def run_agent(agent, case: dict) -> dict:
     answer = (msgs[-1].content if msgs and isinstance(msgs[-1].content, str) else "") or ""
     ti, to = token_usage(msgs)
     tool_outputs = [str(m.content) for m in msgs if getattr(m, "type", "") == "tool" and m.content]
+    try:
+        from utils.context_budget import split_static_dynamic
+        sd = split_static_dynamic(msgs)
+    except Exception as e:
+        logger.warning(f"[eval]静态/动态 token 拆分失败：{type(e).__name__}: {e}")
+        sd = {}
+
     return {
+        "static_tokens": sd.get("static"), "dynamic_tokens": sd.get("dynamic"),
+        "model_calls": sd.get("calls"), "static_share": sd.get("static_share"),
         "tools": [c["name"] for c in tool_calls],
         "tool_calls": tool_calls,
         "tool_outputs": tool_outputs,     # v1.9：工具返回（报告类用例的数字依据在这里）
@@ -534,6 +570,13 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
                    + float(rp.get("call") or 0.0)) if rr else 0.0
     rr_estimated = any(r.get("rerank_tokens_estimated") for r in results)
 
+    # v2.3：静态（system+工具定义）与动态（消息）token 拆分
+    static_vals = [r["static_tokens"] for r in results if r.get("static_tokens") is not None]
+    dyn_vals = [r["dynamic_tokens"] for r in results if r.get("dynamic_tokens") is not None]
+    avg_static = statistics.mean(static_vals) if static_vals else 0
+    avg_dyn = statistics.mean(dyn_vals) if dyn_vals else 0
+    static_share = round(avg_static / (avg_static + avg_dyn) * 100, 1) if (avg_static + avg_dyn) else 0.0
+
     return {
         "n": total,
         "pass_rate": round(passed / total * 100, 1) if total else 0,
@@ -577,6 +620,10 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
         "rewrite_changed": sum(1 for r in results if r.get("rewrite_changed")),
         "rewrite_rate": round(sum(1 for r in results if r.get("rewrite_changed"))
                               / max(1, len([r for r in results if r.get("answer")])) * 100, 1),
+        # v2.3
+        "avg_static_tokens": round(avg_static),
+        "avg_dynamic_tokens": round(avg_dyn),
+        "static_share": static_share,
     }
 
 
@@ -645,6 +692,8 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
         ("重排平均tokens", "avg_rerank_tokens", "{:.0f}"),
         ("查询改写(调用/变更)", "rewrite_calls", "{:.0f}"),
         ("改写变更率", "rewrite_rate", "{:.1f}%"),
+        ("静态tokens(均值)", "avg_static_tokens", "{:.0f}"),
+        ("静态占比", "static_share", "{:.1f}%"),
     ]
     print("\n" + "=" * 70)
     print(f"判据版本: {judge_version}    基线判据: {(base or {}).get('judge_version', '-') if base else '-'}")
@@ -679,6 +728,8 @@ def main():
     ap.add_argument("--category", default="")
     ap.add_argument("--tags", default="", help="按 tags 过滤，逗号分隔（任一命中）")
     ap.add_argument("--ids", default="", help="按 id 过滤，逗号分隔")
+    ap.add_argument("--dataset", default="", help="指定数据集文件（默认 eval/dataset.jsonl；补充集用）")
+    ap.add_argument("--no-compact", action="store_true", help="关闭上下文压缩（A/B 对照）")
     ap.add_argument("--save-baseline", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--judge", action="store_true")
@@ -701,6 +752,9 @@ def main():
                     help="发布闸门基线：通过率不得下降、tokens_in 不得涨超 10%%、忠实度不得掉 2pp，否则 exit 3")
     args = ap.parse_args()
 
+    if args.no_compact:
+        os.environ["AGENT_NO_COMPACT"] = "1"
+
     if args.no_rewrite:
         os.environ["AGENT_NO_REWRITE"] = "1"
         logger.warning("[eval] --no-rewrite 已开启：RAG 工具不会做多轮查询改写")
@@ -715,9 +769,10 @@ def main():
     model = current_model()
     price = load_price(model)
     rerank_price = load_rerank_price()
-    ds_hash = dataset_sha256()
+    ds_path = Path(args.dataset) if args.dataset else DATASET
+    ds_hash = dataset_sha256(ds_path)
     commit = git_commit()
-    all_cases = [json.loads(l) for l in DATASET.read_text(encoding="utf-8").splitlines() if l.strip()]
+    all_cases = [json.loads(l) for l in ds_path.read_text(encoding="utf-8").splitlines() if l.strip()]
     print(f"判据: {JUDGE_VERSION} | 模型: {model} | 价格: 入{price['input']}/出{price['output']} 元每千token | 数据集: {len(all_cases)} 条 (sha={ds_hash})")
 
     if not args.no_llm and not args.skip_preflight:
@@ -760,6 +815,7 @@ def main():
                "note": case.get("note", ""), "expect_tools": case.get("expect_tools") or [],
                "expect_args": case.get("expect_args") or {}, "tags": case.get("tags") or []}
         _restore = _inject_failure(case)
+        _restore_pad = _inject_pad(case)
         try:
             use_rerank = args.rerank or (not args.no_rerank and bool(chroma_conf.get("rerank_enabled")))
             rec.update(retrieval_metrics(vector_store, case, rerank=use_rerank))
@@ -815,6 +871,7 @@ def main():
             print(f"[{i}/{len(cases)}] {case['id']:<6} ERROR {str(e)[:110]}")
         finally:
             _restore_tool(_restore)      # 用例结束一定恢复工具，避免污染后续用例
+            _restore_tool(_restore_pad)
         results.append(rec)
         if args.delay:
             time.sleep(args.delay)

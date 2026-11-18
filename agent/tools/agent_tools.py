@@ -5,6 +5,7 @@ from datetime import datetime
 from utils.config_handler import agent_conf
 from utils.path_tool import get_abs_path
 import os
+import time
 from utils.logger_handler import logger
 import json, urllib.parse, urllib.request
 
@@ -20,41 +21,61 @@ CURRENT_USER_ID = USER_ID   # 当前登录用户，用于越权校验
 
 external_data = {}
 
-@tool(description="从向量存储中检索参考资料")
+@tool(description="检索知识库（问答/故障/保养/选购）；产品类问题必用")
 def rag_summarize(query: str) -> str:
     return rag.rag_summarize(query)
 
 
 
-@tool(description="获取指定城市的实时天气，返回温度、天气现象和湿度")
+@tool(description="实时天气（温度/现象/湿度）；无依赖时可与其他工具并行调用")
 def get_weather(city: str) -> str:
+    """v2.3：两次重试 + 失败返回结构化降级标记（而不是空串），让模型知道是"服务不可用"。"""
     url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1"
-    try:
-        with urllib.request.urlopen(url, timeout=8) as r:   # 必有超时
-            data = json.loads(r.read().decode("utf-8"))
-        cur = data["current_condition"][0]
-        return json.dumps({
-            "city": city,
-            "text": cur["weatherDesc"][0]["value"],
-            "temp_c": cur["temp_C"],
-            "humidity": f'{cur["humidity"]}%',
-        }, ensure_ascii=False)
-    except Exception as e:
-        logger.warning(f"[get_weather]失败：{e}")
-        return ""            # 关键：失败返回空串，不要把异常抛给模型
+    last = None
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(url, timeout=6) as r:   # 必有超时
+                data = json.loads(r.read().decode("utf-8"))
+            cur = data["current_condition"][0]
+            return json.dumps({
+                "city": city,
+                "text": cur["weatherDesc"][0]["value"],
+                "temp_c": cur["temp_C"],
+                "humidity": f'{cur["humidity"]}%',
+            }, ensure_ascii=False)
+        except Exception as e:
+            last = e
+            logger.warning(f"[get_weather]第{attempt + 1}次失败：{e}")
+            if attempt == 0:
+                time.sleep(1)
+    logger.error(f"[get_weather]两次均失败，返回降级标记：{last}")
+    return json.dumps({
+        "error": "service_unavailable",
+        "tool": "get_weather",
+        "retryable": True,
+        "hint": "天气服务暂不可用，无法确认实时天气；不要编造温度/湿度，如实告知用户",
+    }, ensure_ascii=False)
 
 
-@tool(description="获取用户所在城市的名称，以纯字符串形式返回")
+@tool(description="当前用户所在城市（纯字符串）")
 def get_user_location() -> str:
     return USER_CITY
 
-@tool(description="获取用户的ID，以纯字符串形式返回")
+@tool(description="当前用户 ID（纯字符串）；无依赖时可与其他工具并行调用")
 def get_user_id() -> str:
     return USER_ID
 
-@tool(description="获取当前月份，以纯字符串形式返回")
-def get_current_month() -> str:
-    return datetime.now().strftime("%Y-%m")
+@tool(description="获取月份 YYYY-MM；offset=0 当前月，-1 上个月，1 下个月；推荐并行调用")
+def get_current_month(offset: int = 0) -> str:
+    """v2.3：把「上个月」的日期算术从模型手里收回到工具里（修报告月份口径）。"""
+    try:
+        offset = int(offset or 0)
+    except Exception:
+        offset = 0
+    now = datetime.now()
+    total = now.year * 12 + (now.month - 1) + offset
+    year, month = divmod(total, 12)
+    return f"{year}-{month + 1:02d}"
 
 
 def generate_external_data():
@@ -86,7 +107,7 @@ def generate_external_data():
 
 
 
-@tool(description="从外部系统中获取指定用户在指定月份的使用记录，以纯字符串形式返回， 如果未检索到返回空字符串")
+@tool(description="按用户和月份取使用记录（纯字符串 JSON）；仅限当前用户，无记录返回结构化提示")
 def fetch_external_data(user_id: str, month: str) -> str:
     generate_external_data()
 
@@ -99,9 +120,16 @@ def fetch_external_data(user_id: str, month: str) -> str:
         return json.dumps(external_data[user_id][month], ensure_ascii=False)
     except KeyError:
         logger.warning(f"[fetch_external_data]未能检索到用户：{user_id}在{month}的使用记录数据")
-        return ""
+        # v2.3：不再返回空串，给模型一个可判读的"无记录"标记
+        return json.dumps({
+            "error": "not_found",
+            "tool": "fetch_external_data",
+            "user_id": str(user_id),
+            "month": str(month),
+            "hint": "该月没有使用记录，请如实告知用户，不要编造数据",
+        }, ensure_ascii=False)
 
 
-@tool(description="无入参，无返回值，调用后触发中间件自动为报告生成的场景动态注入上下文信息，为后续提示词切换提供上下文信息")
+@tool(description="生成个人报告前必须先调用，用于切换到报告提示词")
 def fill_context_for_report():
     return "fill_context_for_report已调用"

@@ -1,0 +1,22 @@
+# v2.3 上下文预算（单次请求内，不涉及跨会话记忆）
+# 目标：在不改数据集/判据的前提下，把「静态提示 × 轮数 + 消息累积」压下来
+
+compact_enabled: true
+
+# 旧工具结果清理（ContextEditingMiddleware + ClearToolUsesEdit）
+clear_tool_trigger: 1800        # 消息 token 超过该值才清理
+clear_at_least: 200             # 至少清出 200 token 才动手
+clear_keep: 2                   # 最近 2 条工具结果原样保留
+clear_exclude_tools:            # 这些工具的返回不能被清（报告数据/知识库资料）
+  - fetch_external_data
+  - fill_context_for_report
+  - rag_summarize
+
+# 历史摘要（SummarizationMiddleware，仅非报告模式触发）
+summarize_trigger_messages: 8   # 消息条数超过 8 条触发
+summarize_keep_messages: 4      # 摘要后保留最近 4 条原文
+summary_max_tokens: 300         # 摘要本身的最大输出
+
+# 输出约束
+report_max_chars: 800
+agent_max_tokens: 1200

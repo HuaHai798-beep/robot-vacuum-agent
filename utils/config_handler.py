@@ -21,11 +21,17 @@ def load_agent_config(config_path: str=get_abs_path("config/agent.yml"), encodin
         return yaml.load(f, Loader=yaml.FullLoader)
 
 
+def load_context_config(config_path: str=get_abs_path("config/context.yml"), encoding: str="utf-8"):
+    with open(config_path, "r", encoding=encoding) as f:
+        return yaml.load(f, Loader=yaml.FullLoader)
+
+
 # 调用函数加载对应配置
 rag_conf = load_rag_config()
 chroma_conf = load_chroma_config()
 prompts_conf = load_prompts_config()
 agent_conf = load_agent_config()
+context_conf = load_context_config()
 
 if __name__ == '__main__':
     print(chroma_conf["md5_hex_store"])
