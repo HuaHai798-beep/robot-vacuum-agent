@@ -119,6 +119,62 @@ def token_usage(messages) -> tuple[int, int]:
     return ti, to
 
 
+def canon_args(args) -> str:
+    """工具参数规范化（用于判定「同名同参」的重复调用）。"""
+    try:
+        return json.dumps(args or {}, ensure_ascii=False, sort_keys=True)
+    except Exception:
+        return str(args)
+
+
+def count_repeat_tool_calls(tool_calls) -> int:
+    """重复调用次数：同 (工具名, 参数) 第二次及以后都算重复。v2.4 新指标。"""
+    seen = set()
+    repeats = 0
+    for c in tool_calls or []:
+        key = (c.get("name"), canon_args(c.get("args")))
+        if key in seen:
+            repeats += 1
+        else:
+            seen.add(key)
+    return repeats
+
+
+def cache_read_tokens(messages) -> int | None:
+    """命中 Prompt Cache 的输入 token 数（v2.4）。
+
+    兼容三种来源：LangChain usage_metadata.input_token_details.cache_read、
+    response_metadata.token_usage.prompt_cache_hit_tokens、response_metadata 顶层字段。
+    不支持的服务商返回 None（报告里显示 n/a，不许用 0 冒充）。
+    """
+    total = None
+    for m in messages or []:
+        hit = None
+        u = getattr(m, "usage_metadata", None)
+        if isinstance(u, dict):
+            details = u.get("input_token_details") or {}
+            if isinstance(details, dict):
+                hit = details.get("cache_read")
+        if hit is None:
+            rm = getattr(m, "response_metadata", None) or {}
+            tu = rm.get("token_usage") or rm.get("usage") or {}
+            for k in ("prompt_cache_hit_tokens", "cache_read_input_tokens"):
+                if tu.get(k) is not None:
+                    hit = tu.get(k)
+                    break
+            if hit is None:
+                for k in ("prompt_cache_hit_tokens", "cache_read_input_tokens"):
+                    if rm.get(k) is not None:
+                        hit = rm.get(k)
+                        break
+        if hit is not None:
+            try:
+                total = (total or 0) + int(hit)
+            except Exception:
+                pass
+    return total
+
+
 def arg_match(actual, expect) -> bool:
     if expect == "*":
         return actual not in (None, "")
@@ -294,6 +350,21 @@ def run_agent(agent, case: dict) -> dict:
         logger.warning(f"[eval]静态/动态 token 拆分失败：{type(e).__name__}: {e}")
         sd = {}
 
+    # ---- v2.4：重复调用 / 状态栏规模 / 缓存命中 / 报告链轮次 ----
+    repeat_calls = count_repeat_tool_calls(tool_calls)
+    cache_hit = cache_read_tokens(msgs)
+    is_report_case = ("fill_context_for_report" in [c["name"] for c in tool_calls]
+                      or any(k in (case.get("question") or "")
+                             for k in ("报告", "使用情况", "使用记录", "使用数据")))
+    status_tokens = None
+    try:
+        from agent.tools.status_middleware import build_status_text
+        from utils.context_budget import estimate_text_tokens as _est
+        status_text = build_status_text(msgs, report_mode=is_report_case)
+        status_tokens = _est(status_text) if status_text else 0
+    except Exception as e:
+        logger.debug(f"[eval]状态栏规模估算失败：{type(e).__name__}: {e}")
+
     return {
         "static_tokens": sd.get("static"), "dynamic_tokens": sd.get("dynamic"),
         "model_calls": sd.get("calls"), "static_share": sd.get("static_share"),
@@ -306,6 +377,11 @@ def run_agent(agent, case: dict) -> dict:
         "tokens_out": to,
         "tokens": ti + to,
         "n_messages": len(msgs),
+        # v2.4
+        "repeat_tool_calls": repeat_calls,
+        "status_tokens": status_tokens,
+        "cache_hit_tokens": cache_hit,
+        "report_rounds": sd.get("calls") if is_report_case else None,
     }
 
 
@@ -577,6 +653,16 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
     avg_dyn = statistics.mean(dyn_vals) if dyn_vals else 0
     static_share = round(avg_static / (avg_static + avg_dyn) * 100, 1) if (avg_static + avg_dyn) else 0.0
 
+    # ---- v2.4：状态栏 / 重复调用 / 缓存命中 / 报告链轮次 ----
+    repeat_total = sum(int(r.get("repeat_tool_calls") or 0) for r in results)
+    repeat_cases = sum(1 for r in results if (r.get("repeat_tool_calls") or 0) > 0)
+    status_vals = [r["status_tokens"] for r in results if r.get("status_tokens") is not None]
+    hit_vals = [r["cache_hit_tokens"] for r in results if r.get("cache_hit_tokens") is not None]
+    report_rounds = [r["report_rounds"] for r in results if r.get("report_rounds")]
+    cache_hit_total = sum(hit_vals) if hit_vals else None
+    cache_hit_rate = (round(cache_hit_total / sum(tin) * 100, 1)
+                      if (cache_hit_total is not None and sum(tin)) else None)
+
     return {
         "n": total,
         "pass_rate": round(passed / total * 100, 1) if total else 0,
@@ -624,6 +710,13 @@ def summarize(results: list, price: dict, rerank_price: dict | None = None) -> d
         "avg_static_tokens": round(avg_static),
         "avg_dynamic_tokens": round(avg_dyn),
         "static_share": static_share,
+        # v2.4
+        "repeat_tool_calls_total": repeat_total,
+        "repeat_tool_calls_cases": repeat_cases,
+        "avg_status_tokens": round(statistics.mean(status_vals)) if status_vals else None,
+        "cache_hit_tokens_total": cache_hit_total,
+        "cache_hit_rate": cache_hit_rate,
+        "report_rounds_avg": round(statistics.mean(report_rounds), 2) if report_rounds else None,
     }
 
 
@@ -650,6 +743,9 @@ def enforce_gate(cur: dict, gate_path: str, ds_hash: str) -> bool:
     if gm.get("faithfulness") is not None and cur.get("faithfulness") is not None:
         checks.append(("忠实度 ≥ 基线-2pp", cur["faithfulness"] >= gm["faithfulness"] - 2.0,
                        f"{cur['faithfulness']}% vs 基线 {gm['faithfulness']}%"))
+    if gm.get("repeat_tool_calls_total") is not None and cur.get("repeat_tool_calls_total") is not None:
+        checks.append(("重复工具调用不增加", cur["repeat_tool_calls_total"] <= gm["repeat_tool_calls_total"],
+                       f"{cur['repeat_tool_calls_total']} vs 基线 {gm['repeat_tool_calls_total']}"))
     ok_all = all(ok for _, ok, _ in checks)
     print("\n" + "=" * 74)
     print("发布闸门（不许退化）")
@@ -694,6 +790,12 @@ def print_summary(cur: dict, base: dict | None, judge_version: str):
         ("改写变更率", "rewrite_rate", "{:.1f}%"),
         ("静态tokens(均值)", "avg_static_tokens", "{:.0f}"),
         ("静态占比", "static_share", "{:.1f}%"),
+        # v2.4
+        ("重复工具调用(次)", "repeat_tool_calls_total", "{:.0f}"),
+        ("重复涉及用例", "repeat_tool_calls_cases", "{:.0f}"),
+        ("报告链轮次", "report_rounds_avg", "{:.2f}"),
+        ("状态栏tokens(均值)", "avg_status_tokens", "{:.0f}"),
+        ("缓存命中率", "cache_hit_rate", "{:.1f}%"),
     ]
     print("\n" + "=" * 70)
     print(f"判据版本: {judge_version}    基线判据: {(base or {}).get('judge_version', '-') if base else '-'}")

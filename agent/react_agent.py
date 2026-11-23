@@ -8,6 +8,7 @@ from agent.tools.agent_tools import (rag_summarize, get_weather, get_user_locati
                                     get_current_month, fetch_external_data, fill_context_for_report)
 from agent.tools.middleware import monitor_tool, log_before_model, report_prompt_switch
 from agent.tools.context_middleware import build_context_middlewares
+from agent.tools.status_middleware import build_status_middlewares
 
 
 class ReactAgent:
@@ -23,7 +24,9 @@ class ReactAgent:
                         ToolRetryMiddleware(max_retries=2,
                                             tools=["get_weather", "fetch_external_data"],
                                             on_failure="continue"),
-                        *build_context_middlewares()]
+                        *build_context_middlewares(),
+                        # v2.4：状态栏放最后（最内层），保证注入到最终请求的末尾
+                        *build_status_middlewares()]
         )
 
     def execute_stream(self, query: str):

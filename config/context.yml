@@ -20,3 +20,9 @@ summary_max_tokens: 300         # 摘要本身的最大输出
 # 输出约束
 report_max_chars: 800
 agent_max_tokens: 1200
+
+# ---- v2.4 Agent 状态栏（末尾注入，不写 state；AGENT_NO_STATUS=1 可整体关闭做 A/B）----
+status_enabled: true
+status_max_tokens: 120          # 单条状态栏预算；超了先砍 topic 再砍 calls
+status_include_topic: true      # 多轮主题锚点（面积/材质/宠物/机型/月份），修 M004 用
+status_max_rounds: 6            # 只用于展示 "round: n/6"，不强制截断

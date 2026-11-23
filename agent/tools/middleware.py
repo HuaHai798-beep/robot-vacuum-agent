@@ -8,6 +8,27 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command
 from utils.logger_handler import logger
 
+def _sync_recent_turns(state) -> None:
+    """v2.4：把最近轮次写进 ContextVar。
+
+    为什么在工具层还要写一次：v2.4 把全局 list 改成了 ContextVar，
+    而工具可能在另一个线程/上下文里执行，before_model 里 set 的值传不过去。
+    在 wrap_tool_call 里（与工具同一执行上下文）再 set 一次，保证改写一定能拿到。
+    """
+    try:
+        from utils.context_buffer import set_recent_turns
+        msgs = None
+        if isinstance(state, dict):
+            msgs = state.get("messages")
+        if msgs is None:
+            msgs = getattr(state, "messages", None)
+        turns = [str(m.content) for m in (msgs or [])
+                 if getattr(m, "type", "") in {"human", "ai"} and getattr(m, "content", "")]
+        set_recent_turns(turns)
+    except Exception as e:
+        logger.warning(f"[context_buffer]工具层同步最近轮次失败（不影响主流程）：{type(e).__name__}: {e}")
+
+
 @wrap_tool_call
 def monitor_tool(
         # 请求的数据封装
@@ -15,6 +36,7 @@ def monitor_tool(
         # 执行的函数本身
         handler: Callable[[ToolCallRequest], ToolMessage | Command],
 ) -> ToolMessage | Command:  # 工具执行的监控
+    _sync_recent_turns(getattr(request, "state", None))
     logger.info(f"[tool monitor]执行工具：{request.tool_call['name']}")
     logger.info(f"[tool monitor]传入参数：{request.tool_call['args']}")
 
